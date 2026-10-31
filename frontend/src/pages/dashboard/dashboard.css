@@ -1,0 +1,86 @@
+.fm-conditions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  background: var(--paper);
+  border: 3px solid var(--pine);
+  border-radius: 0.75rem;
+}
+.fm-conditions__cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.6rem 0.8rem;
+}
+.fm-conditions__cell + .fm-conditions__cell {
+  border-left: 3px solid var(--pine);
+}
+.fm-conditions__cell--wet {
+  background: var(--kombu);
+  color: var(--paper);
+}
+.fm-conditions__cell--dry {
+  background: var(--copper);
+  color: var(--pine);
+}
+.fm-conditions__icon {
+  font-size: 1.9rem;
+  line-height: 1;
+}
+.fm-conditions__big {
+  font-weight: 700;
+  font-size: 1.3rem;
+  line-height: 1.1;
+}
+.fm-conditions__small {
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+.fm-suggest {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 13rem;
+  overflow-y: auto;
+  background: #fff;
+  border: 3px solid var(--pine);
+  border-radius: 0.75rem;
+}
+.fm-suggest li + li {
+  border-top: 2px solid var(--brandy);
+}
+.fm-suggest button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  text-align: left;
+}
+.fm-suggest button:hover,
+.fm-suggest button:focus-visible {
+  background: var(--brandy);
+}
+/* the map. isolation keeps leaflet's own layers underneath the dialog header */
+.fm-map {
+  height: 220px;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--brandy);
+  border: 3px solid var(--pine);
+  border-radius: 0.75rem;
+}
+/* the pin: a copper teardrop with a pine outline */
+.fm-pin span {
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin: 3px;
+  background: var(--copper);
+  border: 3px solid var(--pine);
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
