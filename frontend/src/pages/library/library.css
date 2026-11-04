@@ -1,0 +1,688 @@
+/*  the parts, from the outside in:
+     .fm-book           the cloth cover (spine on the left, page block peeking out at the bottom)
+     .fm-book__tabs     index tabs that stick out of the top of the pages
+     .fm-book__spread   the open book. one page on phones, two pages (list + details) on laptops
+     .fm-page           one page. --left and --right are the two sides of the spread
+     .fm-chapter        one field = one chapter (numbered with a css counter)
+     .fm-specimen       a crop / plant card, like a pressed-flower card taped to the page
+     .fm-entry          one journal note, like a line on notebook paper
+
+/* ---------- the cover ---------- */
+.fm-book {
+  --book-gutter: 1.25rem; /* how much cover shows around the pages */
+  --book-spine: 1.9rem; /* the width of the spine on the left */
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  padding: 0.6rem var(--book-gutter) 1.6rem calc(var(--book-spine) + 0.35rem);
+  background:
+    /* cloth weave */
+    repeating-linear-gradient(45deg, rgba(251, 246, 234, 0.045) 0 2px, transparent 2px 5px),
+    var(--kombu);
+  border: 3px solid var(--pine);
+  border-radius: 0.6rem 1.1rem 1.1rem 0.6rem;
+  box-shadow: 6px 6px 0 var(--pine);
+}
+/* the spine: darker, with raised bands and a little stitching */
+.fm-book::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--book-spine);
+  border-right: 3px solid var(--pine);
+  border-radius: 0.5rem 0 0 0.5rem;
+  background:
+    /* the two bands sit a fixed distance from the top and bottom, so they never move when the page gets taller or shorter */
+    linear-gradient(var(--copper), var(--copper)) 0 2.4rem / 100% 0.4rem no-repeat,
+    linear-gradient(var(--copper), var(--copper)) 0 calc(100% - 2.8rem) / 100% 0.4rem no-repeat,
+    linear-gradient(to right, rgba(251, 246, 234, 0.12), transparent 40%, rgba(0, 0, 0, 0.18)),
+    var(--pine);
+  pointer-events: none;
+}
+/* the page block seen from below: thin stripes like stacked sheets */
+.fm-book::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--book-spine) + 0.9rem);
+  right: calc(var(--book-gutter) - 0.45rem);
+  bottom: 0.2rem;
+  height: 0.95rem;
+  background: repeating-linear-gradient(to bottom, #fffdf6 0 2px, #d9c9a4 2px 3px);
+  border: 3px solid var(--pine);
+  border-radius: 0 0 0.7rem 0.7rem;
+  z-index: 0;
+}
+
+/* ---------- index tabs ---------- */
+.fm-book__tabs {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 0.35rem;
+  margin: 0 0 -3px 0.6rem;
+  overflow-x: auto;
+  padding-top: 0.15rem;
+  scrollbar-width: none;
+}
+.fm-book__tabs::-webkit-scrollbar {
+  display: none;
+}
+.fm-booktab {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--paper);
+  background: var(--dingley);
+  border: 3px solid var(--pine);
+  border-bottom: 0;
+  border-radius: 0.7rem 0.7rem 0 0;
+  transition:
+    transform 0.12s ease,
+    background-color 0.12s ease;
+}
+/* each tab sits a little lower than the active one, like tabs on a divider */
+.fm-booktab:not(.is-active) {
+  transform: translateY(5px);
+  padding-bottom: 5px;
+}
+@media (hover: hover) {
+  .fm-booktab:not(.is-active):hover {
+    transform: translateY(2px);
+    background: var(--copper);
+    color: var(--pine);
+  }
+}
+.fm-booktab.is-active {
+  color: var(--pine);
+  background: var(--paper);
+  /* hides the page's top border under the tab so the tab and the page are one piece of paper */
+  box-shadow: 0 3px 0 var(--paper);
+}
+.fm-booktab:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: 2px;
+}
+
+/* ---------- the open book ---------- */
+.fm-book__spread {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--paper);
+  border: 3px solid var(--pine);
+  border-radius: 0.5rem 0.9rem 0.9rem 0.5rem;
+  box-shadow: inset 0 0 0 4px rgba(222, 197, 158, 0.35);
+}
+/* a ribbon bookmark hanging out of the top edge */
+.fm-book__ribbon {
+  position: absolute;
+  z-index: 3;
+  top: -3px;
+  right: 1.4rem;
+  width: 1.5rem;
+  height: 3.2rem;
+  background: var(--copper);
+  border: 3px solid var(--pine);
+  border-top: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+  pointer-events: none;
+}
+@media (min-width: 1024px) {
+  .fm-book__spread--open {
+    grid-template-columns: minmax(0, 1fr) 26rem;
+  }
+  /* the fold in the middle: both pages darken toward it */
+  .fm-book__spread--open .fm-page--left {
+    background: linear-gradient(to right, transparent 94%, rgba(32, 40, 8, 0.1));
+  }
+  .fm-book__spread--open .fm-page--right {
+    border-left: 3px solid var(--pine);
+    background: linear-gradient(to left, transparent 94%, rgba(32, 40, 8, 0.07)), linear-gradient(to right, rgba(32, 40, 8, 0.12), transparent 7%);
+  }
+}
+
+.fm-page {
+  min-width: 0;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  /* new page: slides in from the right when the section changes */
+  animation: fm-turn 0.22s ease-out;
+}
+@media (min-width: 640px) {
+  .fm-page {
+    padding: 1.4rem 1.6rem;
+  }
+}
+.fm-page--right {
+  padding: 1.1rem;
+}
+/* the right page keeps its content in view while the left page scrolls */
+.fm-page__sticky {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
+}
+/* the empty right page: a quiet hint, with a pressed leaf */
+.fm-page__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--kombu);
+}
+.fm-page__empty-img {
+  width: min(100%, 14rem);
+  height: auto;
+}
+/* faint ruled lines, for the journal pages */
+.fm-page--ruled {
+  background-image: repeating-linear-gradient(to bottom, transparent 0 1.9rem, rgba(106, 120, 77, 0.16) 1.9rem calc(1.9rem + 2px));
+  background-position: 0 0.9rem;
+}
+@keyframes fm-turn {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- chapters (one per field) ---------- */
+.fm-book__spread {
+  counter-reset: fm-chapter;
+}
+.fm-chapter {
+  counter-increment: fm-chapter;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 3px double var(--brandy);
+}
+.fm-chapter:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.fm-chapter__label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dingley);
+}
+.fm-chapter__label::before {
+  content: "Chapter " counter(fm-chapter, upper-roman);
+}
+/* the title gets a short copper rule under it */
+.fm-chapter__title {
+  position: relative;
+  padding-bottom: 0.35rem;
+}
+.fm-chapter__title::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 3rem;
+  height: 3px;
+  background: var(--copper);
+  border-radius: 2px;
+}
+.fm-chapter__weather {
+  background: var(--brandy);
+  border: 2px solid var(--pine);
+  border-radius: 999px;
+  padding: 0.2rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+/* section headings inside a page (Ready to harvest, Harvested) */
+.fm-page__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.fm-page__heading::after {
+  content: "";
+  flex: 1;
+  height: 0;
+  border-top: 3px double var(--brandy);
+}
+
+/* ---------- specimen cards (crops and plants) ---------- */
+/* set --stage on the element to color the strip along the top (the same stage colors as the dashboard) */
+.fm-specimen {
+  --stage: var(--brandy);
+  position: relative;
+  background: var(--paper);
+  border: 3px solid var(--pine);
+  border-radius: 0.75rem;
+  box-shadow: 3px 3px 0 var(--brandy);
+  overflow: hidden;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.fm-specimen::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 0.5rem;
+  background: var(--stage);
+  border-bottom: 3px solid var(--pine);
+}
+.fm-specimen > * {
+  position: relative;
+}
+@media (hover: hover) {
+  .fm-specimen:hover {
+    transform: translate(-1px, -2px) rotate(-0.4deg);
+    box-shadow: 4px 5px 0 var(--copper);
+  }
+}
+.fm-specimen.is-on {
+  background: var(--brandy);
+  box-shadow: 3px 3px 0 var(--copper);
+}
+.fm-specimen--tile {
+  min-height: 8.75rem;
+  padding: 1.1rem 0.5rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  text-align: center;
+}
+.fm-specimen--card {
+  padding: 1.1rem 0.75rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.fm-specimen:focus-visible,
+.fm-specimen:focus-within {
+  outline: 3px solid var(--copper);
+  outline-offset: 2px;
+}
+/* the "plant more" card */
+.fm-specimen--add {
+  min-height: 8.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--kombu);
+  border: 3px dashed var(--dingley);
+  border-radius: 0.75rem;
+}
+@media (hover: hover) {
+  .fm-specimen--add:hover {
+    background: var(--brandy);
+  }
+}
+
+/* stage chips (filter dialog) */
+.fm-stagechip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 0.8rem;
+  font-weight: 700;
+  background: #fff;
+  border: 3px solid var(--pine);
+  border-radius: 999px;
+}
+.fm-stagechip__dot {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid var(--pine);
+  border-radius: 50%;
+}
+.fm-stagechip[aria-pressed="true"] {
+  background: var(--kombu);
+  color: var(--paper);
+  box-shadow: 3px 3px 0 var(--copper);
+}
+.fm-stagechip:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: 2px;
+}
+
+/* ---------- journal entries ---------- */
+.fm-entry {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0.75rem 0.7rem 4rem;
+  background-color: #fffdf6;
+  /* the red-ish margin line and the ruled lines of notebook paper */
+  background-image:
+    linear-gradient(to right, transparent 3.3rem, var(--copper) 3.3rem calc(3.3rem + 2px), transparent calc(3.3rem + 2px)),
+    repeating-linear-gradient(to bottom, transparent 0 1.45rem, rgba(106, 120, 77, 0.22) 1.45rem calc(1.45rem + 1px));
+  background-position:
+    0 0,
+    0 0.35rem;
+  border: 3px solid var(--pine);
+  border-radius: 0.5rem 0.75rem 0.75rem 0.5rem;
+  box-shadow: 3px 3px 0 var(--brandy);
+}
+/* the date stamp in the margin */
+.fm-entry__stamp {
+  position: absolute;
+  left: 0.35rem;
+  top: 0.55rem;
+  width: 2.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  color: var(--kombu);
+}
+.fm-entry__day {
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+.fm-entry__month {
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.fm-entry__text {
+  line-height: 1.45rem;
+}
+/* a note that is only about one plant gets a small tag */
+.fm-entry__tag {
+  display: inline-block;
+  margin-top: 0.2rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--brandy);
+  border: 2px solid var(--pine);
+  border-radius: 999px;
+}
+
+/*  the plant's own page (details)  */
+.fm-plantmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.1rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: var(--copper);
+  color: var(--pine);
+  border: 2px solid var(--pine);
+  border-radius: 999px;
+}
+.fm-stagebar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  overflow: hidden;
+  border: 3px solid var(--pine);
+  border-radius: 0.75rem;
+  background: #fff;
+}
+.fm-stagebar > div {
+  padding: 0.5rem 0.6rem;
+  text-align: center;
+  line-height: 1.2;
+}
+.fm-stagebar > div + div {
+  border-left: 3px solid var(--pine);
+}
+.fm-stagebar b {
+  display: block;
+  font-size: 1.25rem;
+}
+.fm-stagebar span {
+  font-size: 0.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-page,
+  .fm-booktab,
+  .fm-specimen {
+    animation: none;
+    transition: none;
+  }
+  .fm-specimen:hover {
+    transform: none;
+  }
+}
+
+/*  phones */
+@media (max-width: 639px) {
+  .fm-book {
+    --book-gutter: 0.6rem;
+    --book-spine: 1.1rem;
+    padding-bottom: 1.4rem;
+  }
+  .fm-booktab {
+    padding: 0 0.7rem;
+    font-size: 0.9rem;
+  }
+  .fm-book__ribbon {
+    right: 0.8rem;
+    height: 2.4rem;
+  }
+}
+
+.fm-page__sticky {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dingley) transparent;
+}
+.fm-page__sticky::-webkit-scrollbar {
+  width: 10px;
+}
+.fm-page__sticky::-webkit-scrollbar-track {
+  background: transparent;
+}
+.fm-page__sticky::-webkit-scrollbar-thumb {
+  background: var(--dingley);
+  border: 2px solid var(--paper);
+  border-radius: 999px;
+}
+
+/* crop journal: the open notebook's header */
+.fm-journal__head {
+  --tab: var(--brandy);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: #fff;
+  border: 3px solid var(--pine);
+  border-top: 0.6rem solid var(--tab);
+  border-radius: 0.75rem;
+}
+
+/*  crop chips: one colored chip per crop (Harvest History and Crop Journal)  */
+.fm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.fm-chip {
+  --tab: var(--brandy);
+  --tab-fg: var(--pine);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0 0.7rem;
+  font-weight: 700;
+  color: var(--tab-fg);
+  background: var(--tab);
+  border: 3px solid var(--pine);
+  border-radius: 999px;
+}
+.fm-chip__emoji {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.fm-chip__n {
+  min-width: 1.35rem;
+  padding: 0 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.2rem;
+  text-align: center;
+  color: var(--pine);
+  background: var(--paper);
+  border: 2px solid var(--pine);
+  border-radius: 999px;
+}
+.fm-chip.is-active {
+  box-shadow: 3px 3px 0 var(--pine);
+  outline: 3px solid var(--copper);
+  outline-offset: 1px;
+}
+.fm-chip:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: 2px;
+}
+
+/* ---------- select mode ---------- */
+.fm-selectbar {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--brandy);
+  border: 3px solid var(--pine);
+  border-radius: 0.75rem;
+  box-shadow: 3px 3px 0 var(--pine);
+}
+.fm-check {
+  appearance: none;
+  -webkit-appearance: none;
+  display: grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 1.7rem;
+  height: 1.7rem;
+  margin: 0;
+  cursor: pointer;
+  background: #fff;
+  border: 3px solid var(--pine);
+  border-radius: 0.45rem;
+}
+.fm-check::after {
+  content: "";
+  width: 0.85rem;
+  height: 0.45rem;
+  margin-top: -0.12rem;
+  border-left: 3px solid var(--paper);
+  border-bottom: 3px solid var(--paper);
+  transform: rotate(-45deg) scale(0);
+  transition: transform 0.1s ease;
+}
+.fm-check:checked {
+  background: var(--kombu);
+}
+.fm-check:checked::after {
+  transform: rotate(-45deg) scale(1);
+}
+.fm-check:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: 2px;
+}
+.fm-entry--pick {
+  cursor: pointer;
+}
+.fm-entry.is-picked {
+  background-color: #f4e8cc;
+  box-shadow: 3px 3px 0 var(--copper);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-check::after {
+    transition: none;
+  }
+}
+
+/* Grouped / Individual: a small two-part switch (not a tab and not a plain button) */
+.fm-seg {
+  display: inline-flex;
+  align-self: flex-start;
+  overflow: hidden;
+  background: #fff;
+  border: 3px solid var(--pine);
+  border-radius: 999px;
+  box-shadow: 3px 3px 0 var(--pine);
+}
+.fm-seg__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 42px;
+  padding: 0 1rem;
+  font-weight: 700;
+  color: var(--pine);
+  transition: background-color 0.12s ease;
+}
+.fm-seg__btn + .fm-seg__btn {
+  border-left: 3px solid var(--pine);
+}
+.fm-seg__btn.is-on {
+  background: var(--kombu);
+  color: var(--paper);
+}
+.fm-seg__n {
+  min-width: 1.5rem;
+  padding: 0 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.3rem;
+  text-align: center;
+  color: var(--pine);
+  background: var(--brandy);
+  border: 2px solid var(--pine);
+  border-radius: 999px;
+}
+.fm-seg__btn.is-on .fm-seg__n {
+  background: var(--copper);
+}
+@media (hover: hover) {
+  .fm-seg__btn:not(.is-on):hover {
+    background: var(--brandy);
+  }
+}
+.fm-seg__btn:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: -5px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-seg__btn {
+    transition: none;
+  }
+}

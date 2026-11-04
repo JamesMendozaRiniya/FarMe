@@ -37,13 +37,16 @@ import { SOILS, CROPS, cropByKey } from "../../data/crops";
 
 import dashboardNotif from "../../assets/dashboard-notif.png";
 import dashboardEmpty from "../../assets/dashboard-empty-state.png";
+import trowelImg from "../../assets/trowel.png";
 
 const MAX_DIM_M = 200;
 const MIN_DIM_M = 0.5;
 const MAX_CELLS = 2500;
-const CELL = 30; // pixel size of one grid square
+const CELL = 30; 
+const TROWEL_SIZE = 44; 
+const TROWEL_TIP = { x: 4, y: 4 }; // where the blade tip is inside the png, measured from its bottom-left corner. nudge if the tip feels off
 const MAX_PREVIEW = 365; // how many days ahead the growth slider can go
-// palette (same colors as the css variables in components/shared.css, i copied them here for svg fills)
+
 const PINE = "#202808";
 const KOMBU = "#33432B";
 const DINGLEY = "#6A784D";
@@ -248,7 +251,7 @@ function localRecommend({ soil, areaM2, season, weather }) {
     .map(({ key, reason }) => ({ key, reason }));
 }
 
-// asks the ai (through the api file) first. if there's no endpoint or it fails, my local rules above answer instead.
+// todo(backend): POST /recommend (set AI_ENDPOINT in farmeApi.js). the server prompts Claude and returns { recommendations: [{ key, reason }] }, using only the crop keys sent.
 async function getRecommendations(ctx) {
   const ai = await fetchRecommendations({
     ...ctx,
@@ -367,7 +370,7 @@ function InfoBox({ slot }) {
 
 /* ---------- location picker: search, current location, or drop a pin on the map ---------- */
 
-// leaflet (the map library) loads from a cdn the first time a map shows, so there's nothing to install.
+// leaflet (the map library) loads from a cdn the first time a map shows, so there's nothing to install ! what a nice
 // if it can't load (offline, blocked), the picker still works with search and "use my location".
 const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4";
 let leafletPromise = null;
@@ -442,7 +445,7 @@ function PinMap({ value, onPick }) {
         });
         mapRef.current = { map, marker };
         sync();
-        setTimeout(() => map.invalidateSize(), 80); // the dialog animates in, so i measure the size again once it settles
+        setTimeout(() => map.invalidateSize(), 80); 
       })
       .catch(() => !dead && setFailed(true));
     return () => {
@@ -606,7 +609,6 @@ function LocationPicker({ value, onChange, error }) {
           </button>
         </div>
       </div>
-      {/* suggestions: part of the page flow (not floating) so the dialog never clips them */}
       {results.length > 0 && (
         <ul aria-label="Place suggestions" className="fm-suggest">
           {results.map((r) => (
@@ -630,7 +632,6 @@ function LocationPicker({ value, onChange, error }) {
   );
 }
 
-/* step 1: the form. i also use it to edit a slot: pass slot = the slot being edited and the fields start filled in */
 function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   const editing = !!slot;
   const [name, setName] = useState(slot ? slot.name : defaultName);
@@ -799,7 +800,7 @@ function SlotDetailModal({ slot, wx, onPick, onClose }) {
     }).then((r) => live && setRecs(r));
     return () => {
       live = false;
-    }
+    };
   }, [slot.id, wx.loading]);
 
   return (
@@ -966,8 +967,60 @@ function ReminderBell({ notifs, onRead, onReadAll, onDelete, onDeleteAll, onOpen
 }
 
 // the planting grid. every square is clickable and shows the crop's emoji + its growth stage color
-function PlotGrid({ grid, plantMap, asOf, selected, onSelect, onActivate }) {
+function PlotGrid({
+  grid,
+  plantMap,
+  asOf,
+  selected,
+  onSelect,
+  onActivate,
+  onBox,
+  tool,
+  carry,
+  picked,
+}) {
   const { rows, cols } = grid;
+  // drag with the trowel to select a block of squares. box = { start, end } while the mouse is down.
+  // a drag that ends on the square it started on is just a click, so the click handler on the square toggles it.
+  const svgRef = useRef(null);
+  const startRef = useRef(null);
+  const [box, setBox] = useState(null);
+  const canDrag = tool === "trowel" && carry.length === 0;
+  const cellAt = (e) => {
+    const r = svgRef.current.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * cols * CELL;
+    const y = ((e.clientY - r.top) / r.height) * rows * CELL;
+    return {
+      row: Math.min(rows - 1, Math.max(0, Math.floor(y / CELL))),
+      col: Math.min(cols - 1, Math.max(0, Math.floor(x / CELL))),
+    };
+  };
+  const dragging = box !== null;
+  useEffect(() => {
+    if (!dragging) return;
+    // window listeners, so the drag keeps working when the mouse leaves the grid
+    const move = (e) => setBox({ start: startRef.current, end: cellAt(e) });
+    const up = (e) => {
+      const end = cellAt(e);
+      const start = startRef.current;
+      setBox(null);
+      // shift / ctrl / cmd while dragging adds to the selection, a plain drag starts a new one
+      if (start.row !== end.row || start.col !== end.col)
+        onBox(start, end, e.shiftKey || e.ctrlKey || e.metaKey);
+    };
+    const cancel = () => setBox(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging]);
+  // where the mouse is, so the trowel image can follow it (touch screens have no pointer to follow)
+  const [ptr, setPtr] = useState(null);
   const onKeyDown = (e) => {
     const map = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
     if (map[e.key]) {
@@ -993,11 +1046,19 @@ function PlotGrid({ grid, plantMap, asOf, selected, onSelect, onActivate }) {
       const plant = plantMap.get(`${row}-${col}`);
       const crop = plant ? cropByKey(plant.cropKey) : null;
       const isSel = selected && selected.row === row && selected.col === col;
+      const lifted = !!(plant && carry.some((c) => c.id === plant.id)); // plants on the trowel fade in their old squares
+      const isPicked = !!(plant && picked.includes(plant.id)); // plants selected with the trowel get a copper ring and a check
       cells.push(
         <g
           key={`${row}-${col}`}
           onClick={() => onActivate({ row, col })}
-          className="cursor-pointer"
+          onPointerDown={(e) => {
+            if (!canDrag || e.button !== 0) return;
+            startRef.current = { row, col };
+            setBox({ start: { row, col }, end: { row, col } });
+          }}
+          className={tool ? undefined : "cursor-pointer"}
+          opacity={lifted ? 0.35 : 1}
         >
           <rect
             x={col * CELL + 1}
@@ -1008,6 +1069,7 @@ function PlotGrid({ grid, plantMap, asOf, selected, onSelect, onActivate }) {
             fill={plant ? STAGES[getStage(plant, crop, asOf)].color : COPPER}
             stroke={plant ? PINE : "#8E5A45"}
             strokeWidth={plant ? 2 : 1}
+            strokeDasharray={lifted ? "4 3" : undefined}
           />
           {plant && (
             <text
@@ -1019,6 +1081,39 @@ function PlotGrid({ grid, plantMap, asOf, selected, onSelect, onActivate }) {
             >
               {crop.emoji}
             </text>
+          )}
+          {isPicked && (
+            <>
+              <rect
+                x={col * CELL + 1}
+                y={row * CELL + 1}
+                width={CELL - 2}
+                height={CELL - 2}
+                rx={5}
+                fill="none"
+                stroke={COPPER}
+                strokeWidth={4}
+                pointerEvents="none"
+              />
+              <circle
+                cx={col * CELL + CELL - 7}
+                cy={row * CELL + 7}
+                r={7}
+                fill={COPPER}
+                stroke={PINE}
+                strokeWidth={2}
+                pointerEvents="none"
+              />
+              <path
+                d={`M${col * CELL + CELL - 10} ${row * CELL + 7} l2.5 2.5 l4.5 -5`}
+                fill="none"
+                stroke={PINE}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                pointerEvents="none"
+              />
+            </>
           )}
           {isSel && (
             <rect
@@ -1055,19 +1150,74 @@ function PlotGrid({ grid, plantMap, asOf, selected, onSelect, onActivate }) {
     <div
       className={`overflow-auto rounded-xl border-[3px] border-[#202808] bg-[#A66F57] p-2`}
       style={{ maxHeight: 460 }}
+      onPointerMove={(e) =>
+        setPtr(tool && e.pointerType !== "touch" ? { x: e.clientX, y: e.clientY } : null)
+      }
+      onPointerLeave={() => setPtr(null)}
     >
       <svg
+        ref={svgRef}
         width={cols * CELL}
         height={rows * CELL}
         viewBox={`0 0 ${cols * CELL} ${rows * CELL}`}
-        style={{ display: "block", margin: "0 auto", maxWidth: "none" }}
+        style={{
+          display: "block",
+          margin: "0 auto",
+          maxWidth: "none",
+          cursor: tool ? "none" : undefined,
+          // with the trowel, dragging selects squares instead of scrolling the page
+          touchAction: canDrag ? "none" : undefined,
+          userSelect: "none",
+        }}
+        onDragStart={(e) => e.preventDefault()}
         tabIndex={0}
         role="group"
         aria-label={`Planting grid, ${rows} rows by ${cols} columns. Arrow keys move, Enter plants or selects.`}
         onKeyDown={onKeyDown}
       >
         {cells}
+        {box && box.start && (
+          <rect
+            x={Math.min(box.start.col, box.end.col) * CELL}
+            y={Math.min(box.start.row, box.end.row) * CELL}
+            width={(Math.abs(box.end.col - box.start.col) + 1) * CELL}
+            height={(Math.abs(box.end.row - box.start.row) + 1) * CELL}
+            fill="rgba(196,134,109,0.28)"
+            stroke={PINE}
+            strokeWidth={2}
+            strokeDasharray="5 3"
+            pointerEvents="none"
+          />
+        )}
       </svg>
+      {/* the trowel is the cursor while it's picked. if it holds plants, the first emoji (and how many) rides along */}
+      {tool && ptr && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            left: ptr.x - TROWEL_TIP.x,
+            top: ptr.y - TROWEL_SIZE + TROWEL_TIP.y,
+            zIndex: 25,
+            pointerEvents: "none",
+          }}
+        >
+          <img
+            src={trowelImg}
+            alt=""
+            draggable={false}
+            style={{ display: "block", width: TROWEL_SIZE, height: "auto" }}
+          />
+          {carry.length > 0 && (
+            <span style={{ position: "absolute", left: TROWEL_SIZE - 8, top: -10, fontSize: 22 }}>
+              {cropByKey(carry[0].cropKey).emoji}
+              {carry.length > 1 && (
+                <span style={{ fontSize: 13, fontWeight: 800 }}>×{carry.length}</span>
+              )}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1079,6 +1229,93 @@ function Stat({ label, value, hint }) {
       <p className="font-display text-2xl font-bold">{value}</p>
       {hint && <p className="text-xs">{hint}</p>}
     </div>
+  );
+}
+
+/* harvest dialog for one or more ready plants: harvest and keep them (they grow again) or harvest and remove them */
+function HarvestModal({ plants, onSubmit, onClose }) {
+  const [amount, setAmount] = useState("");
+  const [action, setAction] = useState("keep");
+  const many = plants.length > 1;
+  // "🍅 Kamatis ×3, 🍆 Talong ×1"
+  const summary = Object.values(
+    plants.reduce((acc, p) => {
+      const crop = cropByKey(p.cropKey);
+      acc[p.cropKey] = acc[p.cropKey] || { crop, n: 0 };
+      acc[p.cropKey].n++;
+      return acc;
+    }, {}),
+  )
+    .map((g) => `${g.crop.emoji} ${g.crop.name} ×${g.n}`)
+    .join(", ");
+  const options = [
+    [
+      "keep",
+      "Harvest and keep",
+      `Logs the harvest. ${many ? "The plants stay" : "The plant stays"} and start${many ? "" : "s"} growing again from a sprout.`,
+    ],
+    [
+      "remove",
+      "Harvest and remove",
+      `Logs the harvest and frees ${many ? "the squares" : "the square"} for something new.`,
+    ],
+  ];
+  return (
+    <Modal
+      title={many ? `${plants.length} plants are ready` : "This plant is ready"}
+      onClose={onClose}
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit({ action, amount: amount.trim() });
+        }}
+        className="flex flex-col gap-3"
+      >
+        <p className="font-bold">
+          {many
+            ? summary
+            : `${summary.replace(" ×1", "")} at row ${plants[0].row + 1}, column ${plants[0].col + 1}`}
+        </p>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="font-bold mb-1">What do you want to do?</legend>
+          {options.map(([value, title, text]) => (
+            <label
+              key={value}
+              className={`fm-panel p-3 flex items-start gap-3 cursor-pointer ${action === value ? "!bg-[#DEC59E]" : ""}`}
+            >
+              <input
+                type="radio"
+                name="plant-action"
+                checked={action === value}
+                onChange={() => setAction(value)}
+                className="mt-1 w-5 h-5 accent-[#33432B]"
+              />
+              <span>
+                <span className="block font-bold">{title}</span>
+                <span className="text-sm">{text}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <div>
+          <label htmlFor="harvest-amount" className="block font-bold mb-1">
+            {many ? "How much from each plant? (optional)" : "How much did you pick? (optional)"}
+          </label>
+          <input
+            id="harvest-amount"
+            value={amount}
+            maxLength={30}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="e.g. 3 kg or 12 pieces"
+            className="fm-input"
+          />
+        </div>
+        <button type="submit" className="fm-btn fm-btn--primary">
+          Log harvest
+        </button>
+      </form>
+    </Modal>
   );
 }
 
@@ -1096,16 +1333,22 @@ export default function FarMeDashboard() {
   const [pendingEdit, setPendingEdit] = useState(null); // { data, changes }: edits waiting for "save these changes?"
   const [confirm, setConfirm] = useState(null); // { type: "plant" | "notif" | "notifs", id? }: a delete waiting for a yes / no
   const [toDelete, setToDelete] = useState(null); // the slot waiting for a yes / no
+  const [harvesting, setHarvesting] = useState(null); // ids of the plants in the harvest dialog
   const [flow, setFlow] = useState(null); // { step: "success" | "detail", id }
   // brush = the crop that gets planted when an empty square is clicked
   const [brush, setBrush] = useState(null); // the crop key chosen for planting
   const [selected, setSelected] = useState(null);
+  const [tool, setTool] = useState(null); // "trowel" while the trowel is picked
+  const [picked, setPicked] = useState([]); // ids of the plants selected with the trowel (select as many as you like)
+  const [carry, setCarry] = useState([]); // ids of the plants the trowel is holding, to put down together
+  const [toolMsg, setToolMsg] = useState(""); // short message about what the trowel just did
   const [plantedOn, setPlantedOn] = useState(todayIso());
   const [preview, setPreview] = useState(0);
   const [playing, setPlaying] = useState(false);
 
   // load the slots once on start, then save them every time they change
   // todo(backend): i save the whole list on every change. later, call the create / update / delete endpoints inside each action instead.
+  // todo(backend): when loadSlots is a real request it must throw on failure, not return []. otherwise a failed load gets saved back over the user's slots. show an error here instead.
   useEffect(() => {
     db.loadSlots().then((s) => {
       setSlots(s);
@@ -1131,8 +1374,8 @@ export default function FarMeDashboard() {
   }, [playing]);
 
   // the signed-in user
-  // todo(backend): getUser in the api file
-  const [user, setUser] = useState({ firstName: "there", lastName: "" });
+  // todo(backend): GET /me through getUser() in the api file. needs { username, firstName, lastName, role?, avatarUrl? }. username is the greeting.
+  const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); // empty until getUser answers, so no placeholder name shows
   useEffect(() => {
     getUser().then(setUser);
   }, []);
@@ -1158,6 +1401,36 @@ export default function FarMeDashboard() {
   const selPlant = selected ? plantMap.get(`${selected.row}-${selected.col}`) : null;
   const selCrop = selPlant ? cropByKey(selPlant.cropKey) : null;
   const brushCrop = cropByKey(brush);
+  const carryPlants = slot ? slot.plants.filter((p) => carry.includes(p.id)) : [];
+  const pickedPlants = slot ? slot.plants.filter((p) => picked.includes(p.id)) : [];
+  // only plants that are ready today can be harvested (not ones that are only ready in the growth preview)
+  const readyPlants = slot
+    ? slot.plants.filter((p) => getStage(p, cropByKey(p.cropKey), todayIso()) === "ready")
+    : [];
+  const pickedReady = pickedPlants.filter((p) => readyPlants.some((r) => r.id === p.id));
+  const clearTrowel = () => {
+    setCarry([]);
+    setPicked([]);
+  };
+
+  // the trowel message fades by itself
+  useEffect(() => {
+    if (!toolMsg) return;
+    const t = setTimeout(() => setToolMsg(""), 4000);
+    return () => clearTimeout(t);
+  }, [toolMsg]);
+  // esc: put the plants back first, then clear the selection, then put the trowel away
+  useEffect(() => {
+    if (!tool) return;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (carry.length) setCarry([]);
+      else if (picked.length) setPicked([]);
+      else setTool(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tool, carry, picked]);
 
   const updateSlot = (id, fn) => setSlots((all) => all.map((s) => (s.id === id ? fn(s) : s)));
   const uniqueName = (base) => {
@@ -1181,6 +1454,8 @@ export default function FarMeDashboard() {
   const openSlot = (id) => {
     setOpenId(id);
     setSelected(null);
+    setTool(null);
+    clearTrowel();
     setPreview(0);
     setPlaying(false);
   };
@@ -1197,11 +1472,14 @@ export default function FarMeDashboard() {
     setFlow(null);
   };
 
-  // click / enter on a square: plant the selected crop if it's empty, otherwise just select it.
+  // click / enter on a square. with the trowel: pick up, move or harvest. otherwise plant the crop i picked if it's empty, or just select it.
   // todo(backend): POST /slots/:id/plants
   const activateCell = (cell) => {
     setSelected(cell);
-    if (!slot || !brush || plantMap.has(`${cell.row}-${cell.col}`)) return;
+    if (!slot) return;
+    const here = plantMap.get(`${cell.row}-${cell.col}`);
+    if (tool === "trowel") return trowelClick(cell, here);
+    if (!brush || here) return;
     updateSlot(slot.id, (s) => ({
       ...s,
       plants: [
@@ -1211,9 +1489,118 @@ export default function FarMeDashboard() {
     }));
   };
 
-  // todo(backend): DELETE /plants/:id
-  const removePlant = (id) =>
-    updateSlot(slot.id, (s) => ({ ...s, plants: s.plants.filter((p) => p.id !== id) }));
+  // the trowel works like a gallery: click plants to select or unselect them, as many as you like.
+  // then move them together, harvest the ready ones, or throw them away (buttons in the side panel)
+  const trowelClick = (cell, here) => {
+    if (carryPlants.length) return placeGroup(cell);
+    if (!here) return;
+    setPicked((ids) =>
+      ids.includes(here.id) ? ids.filter((id) => id !== here.id) : [...ids, here.id],
+    );
+    setToolMsg("");
+  };
+  // put the plants on the trowel down. the first one (top left) lands on the square i click and the rest keep their layout around it
+  // todo(backend): PATCH /plants/:id { row, col } for every plant that moved
+  const placeGroup = (cell) => {
+    const group = [...carryPlants].sort((a, b) => a.row - b.row || a.col - b.col);
+    const dr = cell.row - group[0].row;
+    const dc = cell.col - group[0].col;
+    if (dr === 0 && dc === 0) {
+      setCarry([]); // clicked the square it came from: put back
+      return setToolMsg("Put back where they were.");
+    }
+    const ids = new Set(group.map((p) => p.id));
+    const fits = group.every((p) => {
+      const r = p.row + dr;
+      const c = p.col + dc;
+      if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) return false; // outside the plot
+      const other = plantMap.get(`${r}-${c}`);
+      return !other || ids.has(other.id); // empty, or a square one of them is leaving
+    });
+    if (!fits) {
+      return setToolMsg(
+        "They don't fit there. Some squares are taken or outside the plot, so try another spot.",
+      );
+    }
+    updateSlot(slot.id, (s) => ({
+      ...s,
+      plants: s.plants.map((p) => (ids.has(p.id) ? { ...p, row: p.row + dr, col: p.col + dc } : p)),
+    }));
+    setCarry([]);
+    setToolMsg(
+      group.length === 1
+        ? `Moved ${cropByKey(group[0].cropKey).name}.`
+        : `Moved ${group.length} plants together.`,
+    );
+  };
+  // drag-select: a plain drag starts a new selection with the plants inside the box (an empty box clears it).
+  // holding shift / ctrl / cmd adds the plants to the selection i already have.
+  const selectBox = (a, b, add) => {
+    const r1 = Math.min(a.row, b.row);
+    const r2 = Math.max(a.row, b.row);
+    const c1 = Math.min(a.col, b.col);
+    const c2 = Math.max(a.col, b.col);
+    const inside = slot.plants
+      .filter((p) => p.row >= r1 && p.row <= r2 && p.col >= c1 && p.col <= c2)
+      .map((p) => p.id);
+    setPicked((ids) => (add ? [...new Set([...ids, ...inside])] : inside));
+    setToolMsg("");
+  };
+  const startMove = () => {
+    setCarry(picked);
+    setPicked([]);
+    setToolMsg("");
+  };
+  const toggleTrowel = () => {
+    setTool(tool ? null : "trowel");
+    setBrush(null);
+    clearTrowel();
+    setToolMsg("");
+  };
+
+  // todo(backend): DELETE /plants/:id for each one
+  const removePlants = (ids) => {
+    updateSlot(slot.id, (s) => ({ ...s, plants: s.plants.filter((p) => !ids.includes(p.id)) }));
+    setCarry((c) => c.filter((id) => !ids.includes(id)));
+    setPicked((c) => c.filter((id) => !ids.includes(id)));
+  };
+  // the harvest dialog: keep = log the harvest and the plants grow again (planting date becomes today), remove = log it and free the squares
+  // todo(backend): POST /slots/:id/harvests { plantId, at, amount, kept } for each plant, then PATCH or DELETE it
+  const harvestPlants = ({ action, amount }) => {
+    const group = slot.plants.filter((x) => harvesting.includes(x.id));
+    setHarvesting(null);
+    if (!group.length) return;
+    const keep = action === "keep";
+    const date = todayIso();
+    const ids = new Set(group.map((p) => p.id));
+    updateSlot(slot.id, (s) => ({
+      ...s,
+      harvests: [
+        ...group.map((p) => ({
+          id: crypto.randomUUID(),
+          cropKey: p.cropKey,
+          row: p.row,
+          col: p.col,
+          plantedOn: p.plantedOn,
+          date,
+          amount,
+          kept: keep,
+        })),
+        ...(s.harvests || []),
+      ],
+      plants: keep
+        ? s.plants.map((x) => (ids.has(x.id) ? { ...x, plantedOn: date, lastHarvested: date } : x))
+        : s.plants.filter((x) => !ids.has(x.id)),
+    }));
+    setPicked((c) => c.filter((id) => !ids.has(id)));
+    const what = group.length === 1 ? cropByKey(group[0].cropKey).name : `${group.length} plants`;
+    setToolMsg(
+      keep
+        ? `Harvested ${what}. ${group.length === 1 ? "It starts" : "They start"} growing again.`
+        : `Harvested ${what}. The ${group.length === 1 ? "square is" : "squares are"} free.`,
+    );
+  };
+
   // todo(backend): DELETE /slots/:id
   const doDelete = () => {
     setSlots((all) => all.filter((s) => s.id !== toDelete.id));
@@ -1233,6 +1620,7 @@ export default function FarMeDashboard() {
     return () => clearInterval(t);
   }, []);
   // read / deleted marks, loaded and saved through the api file
+  // todo(backend): keep these marks per user (see db.loadNotifState in farmeApi.js)
   const [nstate, setNstate] = useState({ read: {}, deleted: {} });
   const [nLoaded, setNLoaded] = useState(false);
   useEffect(() => {
@@ -1333,14 +1721,20 @@ export default function FarMeDashboard() {
   };
 
   // deleting a plant or notification(s) always asks first (see confirmInfo + runConfirm)
-  const confirmPlant =
-    confirm?.type === "plant" && slot ? slot.plants.find((p) => p.id === confirm.id) : null;
+  const confirmPlants =
+    confirm?.type === "plant" && slot ? slot.plants.filter((p) => confirm.ids.includes(p.id)) : [];
   const confirmInfo =
-    confirm?.type === "plant" && confirmPlant
+    confirm?.type === "plant" && confirmPlants.length
       ? {
-          title: "Remove this plant?",
-          message: `${cropByKey(confirmPlant.cropKey)?.name} at row ${confirmPlant.row + 1}, column ${confirmPlant.col + 1} will be removed from this slot.`,
-          label: "Remove plant",
+          title:
+            confirmPlants.length === 1
+              ? "Remove this plant?"
+              : `Remove ${confirmPlants.length} plants?`,
+          message:
+            confirmPlants.length === 1
+              ? `${cropByKey(confirmPlants[0].cropKey)?.name} at row ${confirmPlants[0].row + 1}, column ${confirmPlants[0].col + 1} will be removed from this slot.`
+              : `${confirmPlants.length} plants will be removed from this slot.`,
+          label: confirmPlants.length === 1 ? "Remove plant" : "Remove plants",
         }
       : confirm?.type === "notif"
         ? {
@@ -1356,7 +1750,7 @@ export default function FarMeDashboard() {
             }
           : null;
   const runConfirm = () => {
-    if (confirm.type === "plant") removePlant(confirm.id);
+    if (confirm.type === "plant") removePlants(confirm.ids);
     else if (confirm.type === "notif") deleteNotif(confirm.id);
     else deleteAllNotifs();
     setConfirm(null);
@@ -1401,7 +1795,11 @@ export default function FarMeDashboard() {
   const cropButton = (c) => (
     <button
       key={c.key}
-      onClick={() => setBrush(brush === c.key ? null : c.key)}
+      onClick={() => {
+        setBrush(brush === c.key ? null : c.key);
+        setTool(null);
+        clearTrowel();
+      }}
       aria-pressed={brush === c.key}
       className={`min-h-[44px] px-3 rounded-xl border-[3px] border-[#202808] font-bold flex items-center gap-2 ${brush === c.key ? `bg-[#33432B] text-[#FBF6EA] shadow-[3px_3px_0_#C4866D]` : `bg-white`}`}
     >
@@ -1419,7 +1817,7 @@ export default function FarMeDashboard() {
       <div className="flex-1 min-w-0 p-3 sm:p-5 flex flex-col gap-4">
         <header className="flex items-center justify-between gap-3">
           <h1 className="font-display text-2xl sm:text-3xl font-bold truncate">
-            Hello, {user.firstName}
+            {user.username ? `Hello, ${user.username}` : "Hello"}
           </h1>
           <ReminderBell
             notifs={notifs}
@@ -1658,9 +2056,100 @@ export default function FarMeDashboard() {
                     selected={selected}
                     onSelect={setSelected}
                     onActivate={activateCell}
+                    onBox={selectBox}
+                    tool={tool}
+                    carry={carryPlants}
+                    picked={picked}
                   />
                 </div>
                 <div className={`fm-panel p-4`} style={{ flex: "1 1 220px" }} aria-live="polite">
+                  {/* the trowel: select plants like in a gallery, then move, harvest or throw them away together */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <button
+                      onClick={toggleTrowel}
+                      aria-pressed={tool === "trowel"}
+                      className={`min-h-[44px] px-3 rounded-xl border-[3px] border-[#202808] font-bold flex items-center gap-2 ${tool === "trowel" ? "bg-[#33432B] text-[#FBF6EA] shadow-[3px_3px_0_#C4866D]" : "bg-white"}`}
+                    >
+                      <img src={trowelImg} alt="" className="w-7 h-7 object-contain" />
+                      Trowel
+                    </button>
+                  </div>
+                  {tool && (
+                    <div className="flex flex-col gap-2 mb-3">
+                      {carryPlants.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          <button onClick={() => setCarry([])} className="fm-btn fm-btn--light">
+                            Put back
+                          </button>
+                          <button
+                            onClick={() =>
+                              setConfirm({ type: "plant", ids: carryPlants.map((p) => p.id) })
+                            }
+                            className="fm-btn fm-btn--danger-light"
+                          >
+                            Throw away
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => setPicked(slot.plants.map((p) => p.id))}
+                              disabled={slot.plants.length === 0}
+                              className="fm-btn fm-btn--light !min-h-[36px] !px-2 !text-xs"
+                            >
+                              Select all
+                            </button>
+                            <button
+                              onClick={() => setPicked(readyPlants.map((p) => p.id))}
+                              disabled={readyPlants.length === 0}
+                              className="fm-btn fm-btn--light !min-h-[36px] !px-2 !text-xs"
+                            >
+                              Select ready ({readyPlants.length})
+                            </button>
+                            {picked.length > 0 && (
+                              <button
+                                onClick={() => setPicked([])}
+                                className="fm-btn fm-btn--light !min-h-[36px] !px-2 !text-xs"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          {picked.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              <button onClick={startMove} className="fm-btn fm-btn--primary">
+                                Move ({picked.length})
+                              </button>
+                              <button
+                                onClick={() => setHarvesting(pickedReady.map((p) => p.id))}
+                                disabled={pickedReady.length === 0}
+                                className="fm-btn fm-btn--accent"
+                              >
+                                Harvest ({pickedReady.length})
+                              </button>
+                              <button
+                                onClick={() => setConfirm({ type: "plant", ids: picked })}
+                                className="fm-btn fm-btn--danger-light"
+                              >
+                                Throw away
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {(toolMsg || tool) && (
+                    <p className="text-sm font-bold mb-3">
+                      {toolMsg ||
+                        (carryPlants.length > 0
+                          ? `${carryPlants.length} plant${carryPlants.length === 1 ? " is" : "s are"} on the trowel. Click a square to put ${carryPlants.length === 1 ? "it" : "them"} down. The top left plant lands where you click.`
+                          : picked.length > 0
+                            ? `${picked.length} selected. Drag again for a new selection, hold Shift to add, or click a plant to add or remove it.${pickedReady.length < picked.length ? " Only ready plants can be harvested." : ""}`
+                            : "Drag across the grid to select a group, or click plants one by one. Then move, harvest or throw them away.")}
+                    </p>
+                  )}
                   {!selected && <p>Click a square to plant or see details.</p>}
                   {selected && !selPlant && (
                     <>
@@ -1686,15 +2175,11 @@ export default function FarMeDashboard() {
                       </h3>
                       <p>Stage: {STAGES[getStage(selPlant, selCrop, asOf)].label}</p>
                       <p>Planted: {selPlant.plantedOn}</p>
+                      {selPlant.lastHarvested && <p>Last harvested: {selPlant.lastHarvested}</p>}
                       <p className="mb-3">
                         Harvest around: {addDays(selPlant.plantedOn, selCrop.maturity)}
                       </p>
-                      <button
-                        onClick={() => setConfirm({ type: "plant", id: selPlant.id })}
-                        className={`fm-btn fm-btn--danger-light w-full`}
-                      >
-                        Remove plant
-                      </button>
+                      <p className="text-sm">Use the trowel to move or harvest this plant.</p>
                     </>
                   )}
                 </div>
@@ -1809,6 +2294,13 @@ export default function FarMeDashboard() {
           danger
           onConfirm={runConfirm}
           onClose={() => setConfirm(null)}
+        />
+      )}
+      {harvesting && slot && (
+        <HarvestModal
+          plants={slot.plants.filter((p) => harvesting.includes(p.id))}
+          onSubmit={harvestPlants}
+          onClose={() => setHarvesting(null)}
         />
       )}
       {flow?.step === "success" && flowSlot && (

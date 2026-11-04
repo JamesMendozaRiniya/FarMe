@@ -1,4 +1,4 @@
-// the pieces every page can call: Img, Sidebar (collapsible nav) and ChatHead (floating chat bubble).
+// the pieces every page can call: Img, Sidebar (collapsible nav) and ChatHead (floating chat bubble) :D
 // how to use them on any page:
 //   <Sidebar active="library" user={user} />
 //   <ChatHead context={{ page: "library" }} />
@@ -33,19 +33,14 @@ const NAV_LINKS = [
   { key: "settings", label: "Settings", href: "/settings", img: sidebarSettings },
 ];
 
-// the nav, dropdown and dialogs need the newest shared.css (the one with --fm-css-version: 5).
-// if the css is old or missing, i show a warning on screen so you know to replace it.
 const CSS_VERSION = "5";
-// size of the right-side nav image. i set the same variable in shared.css (:root), and fall back to 20px if it isn't found.
 const MARK = { width: "var(--fm-mark-size, 20px)", height: "var(--fm-mark-size, 20px)" };
 
 const NAV_KEY = "farme.nav.collapsed";
 const CHAT_KEY = "farme.chat.v1";
-const BUBBLE = 56; // chat bubble size in px
+const BUBBLE = 56; 
 const isWide = () => window.matchMedia("(min-width: 768px)").matches; // tablet and up
 
-// image with a fixed size. give it w + h in px, or w + ratio (like "2 / 1"), or a className that sets the size in css (the logo does this).
-// if the file is missing it shows a dashed box of the same size, so the layout doesn't jump.
 export function Img({ src, alt, w, h, ratio, className, label = "img" }) {
   const [failed, setFailed] = useState(false);
   const box = ratio ? { width: w, aspectRatio: ratio } : { width: w, height: h };
@@ -71,8 +66,6 @@ export function Img({ src, alt, w, h, ratio, className, label = "img" }) {
   );
 }
 
-// ---------- modal (every popup uses this; the look is in shared.css: .fm-modal-*) ----------
-// the page can't scroll while a popup is open. i count the open popups so this still works when they stack (edit form + "save changes?").
 let openModals = 0;
 let bodyOverflow = "";
 const lockScroll = () => {
@@ -85,7 +78,7 @@ const unlockScroll = () => {
   openModals = Math.max(0, openModals - 1);
   if (openModals === 0) document.body.style.overflow = bodyOverflow;
 };
-// props: title, onClose, wide = a wider dialog (for content like the crop suggestions)
+  // props: title, onClose, wide = a wider dialog (for content like the crop suggestions)
 export function Modal({ title, onClose, wide, children }) {
   // onClose changes on every render, so i keep the latest one in a ref and set the listeners up only once
   const closeRef = useRef(onClose);
@@ -422,11 +415,6 @@ export function DatePicker({ id, value, onChange, min, max }) {
   );
 }
 
-// the little image on the right side of a nav link:
-//   sidebar-hover.png   shows while hovering
-//   sidebar-active.png  shows on the page you're on
-// every link shares those two. for one page only, add sidebar-<page>-hover.png / sidebar-<page>-active.png
-// (like sidebar-library-hover.png). missing files are skipped, so nothing breaks if one isn't there.
 const SHARED_MARKS = import.meta.glob("../assets/sidebar-{hover,active}.png", {
   eager: true,
   import: "default",
@@ -443,11 +431,7 @@ const markImg = (key, state) =>
 const initials = (u) =>
   `${(u?.firstName || "")[0] || ""}${(u?.lastName || "")[0] || ""}`.toUpperCase() || "?";
 
-// the nav: a top bar with a menu button on phones, a sidebar from tablet width up.
-// the small toggle floats in front of the logo (see .fm-nav__toggle in shared.css) and collapses the nav:
-// phones hide the links, tablets shrink to icons only (i remember it between pages).
-// props: active = current page key, user = { firstName, lastName, role?, avatarUrl? } from the backend (no avatarUrl = initials),
-//        onHome = optional, runs when the dashboard link is clicked while already on the dashboard
+// todo(backend): `user` comes from getUser() (GET /me). avatarUrl = a full image URL for the profile photo; leave it out and the card shows initials.
 export function Sidebar({ active = "dashboard", user, onHome }) {
   const [collapsed, setCollapsed] = useState(() => {
     if (!isWide()) return true; // phones always start closed
@@ -476,13 +460,14 @@ export function Sidebar({ active = "dashboard", user, onHome }) {
   }, []);
 
   const [askLogout, setAskLogout] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false); // true when avatarUrl can't be loaded, so we show initials instead
+  useEffect(() => setAvatarFailed(false), [user?.avatarUrl]);
   const name = user ? `${user.firstName} ${user.lastName}`.trim() : "";
 
   return (
     <>
       <nav aria-label="Main" className={`fm-nav${collapsed ? " fm-nav--collapsed" : ""}`}>
         <div className="fm-nav__top">
-          {/* collapse / expand button: menu icon on phones, chevrons on tablet and up */}
           <button
             type="button"
             className="fm-btn fm-btn--light fm-nav__toggle"
@@ -559,8 +544,8 @@ export function Sidebar({ active = "dashboard", user, onHome }) {
             {name && (
               <div className="fm-user" title={name}>
                 <span className="fm-user__avatar" aria-hidden="true">
-                  {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt="" draggable={false} />
+                  {user.avatarUrl && !avatarFailed ? (
+                    <img src={user.avatarUrl} alt="" draggable={false} onError={() => setAvatarFailed(true)} />
                   ) : (
                     initials(user)
                   )}
@@ -607,6 +592,7 @@ export function Sidebar({ active = "dashboard", user, onHome }) {
           save, and refresh. (This message goes away on its own.)
         </p>
       )}
+      {/* todo(backend): logout() should end the session on the server (POST /logout), then go to the login page */}
       {askLogout && (
         <ConfirmModal
           title="Log out?"
@@ -630,6 +616,7 @@ const SUGGESTIONS = ["What should I plant now?", "How often should I water?"];
 
 export function ChatHead({ context }) {
   // restore what i saved on the last page
+  // todo(backend): the chat history (last 50 messages) only lives in this browser's localStorage. save it per user on the server if it should follow them across devices.
   const [saved] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(CHAT_KEY) || "{}");
@@ -676,7 +663,6 @@ export function ChatHead({ context }) {
     endRef.current?.scrollIntoView?.({ block: "end" });
   }, [messages, busy, open]);
 
-  // drag handling (pointer events work for mouse, touch and pen)
   const onPointerDown = (e) => {
     drag.current = {
       x: e.clientX,
@@ -713,6 +699,7 @@ export function ChatHead({ context }) {
   };
 
   // send a message, then add the bot's reply
+  // todo(backend): sendChat posts the last 20 messages + `context` to CHAT_ENDPOINT (POST /chat) and expects { reply }. see farmeApi.js.
   const send = async (raw) => {
     const content = raw.trim();
     if (!content || busy) return;
