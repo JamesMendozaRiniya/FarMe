@@ -10,6 +10,7 @@ import logo from "../../assets/sidebar-logo.png";
 import AvatarStudio from "../../components/avatar-studio";
 import { startAvatar, useAvatarUri } from "../../components/avatar";
 import { register } from "../../services/farmeApi"; // the call to the server (todo(backend) notes are there)
+import PageFade from "../../components/page-fade"; // fades between the register / login / forgot / reset pages
 
 const LOGIN_HREF = "/login"; // our login page (App.jsx). change it if the route changes
 
@@ -180,7 +181,7 @@ export default function Register() {
   const pwMatches = values.confirm !== "" && values.confirm === values.password;
 
   return (
-    <main className="fm-reg">
+    <PageFade className="fm-reg">
       <div className="fm-reg__inner">
         <div className="fm-card fm-reg__card">
           <img src={logo} alt="FarMe" className="fm-reg__logo" />
@@ -293,6 +294,6 @@ export default function Register() {
 
         <FarmerCard first={values.firstName} last={values.lastName} username={values.username} avatarUri={avatarUri} />
       </div>
-    </main>
+    </PageFade>
   );
 }

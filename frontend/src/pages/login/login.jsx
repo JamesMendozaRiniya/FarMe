@@ -11,6 +11,7 @@ import "./login.css";
 import logo from "../../assets/sidebar-logo.png";
 import Sprout from "../../components/sprout";
 import { login } from "../../services/farmeApi"; // the call to the server (todo(backend) notes are there)
+import PageFade from "../../components/page-fade"; // fades between the register / login / forgot / reset pages
 
 const AFTER_LOGIN_HREF = "/dashboard"; // change to our dashboard route
 const REGISTER_HREF = "/register";
@@ -126,7 +127,7 @@ export default function Login() {
   const pwErr = shown("password");
 
   return (
-    <main className="fm-login">
+    <PageFade className="fm-login">
       <div className="fm-card fm-login__card">
         {/* the sprout side: the sprout follows the pointer while it is anywhere on this side */}
         <section className="fm-login__mascot" aria-label="Your FarMe sprout">
@@ -225,6 +226,6 @@ export default function Login() {
           </form>
         </div>
       </div>
-    </main>
+    </PageFade>
   );
 }

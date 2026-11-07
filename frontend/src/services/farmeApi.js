@@ -1,6 +1,8 @@
 // ENDPOINTS THE PAGES NEED (the same `todo(backend)` tags in dashboard.jsx / library.jsx mark where each is called)
 //   todo(backend): register       POST /register                       -> register()      (the register page)
 //   todo(backend): login          POST /login                          -> login()         (the login page)
+//   todo(backend): password       POST /forgot-password                -> forgotPassword()  (the forgot password page)
+//                                 POST /reset-password                 -> resetPassword()   (the reset password page)
 //   todo(backend): user           GET /me                              -> getUser()
 //                                 POST /logout                         -> logout()
 //   todo(backend): slots          GET /slots                           -> db.loadSlots()   (return each slot with its plants, harvests, notes)
@@ -98,7 +100,17 @@ export async function logWatering(slotId, at) {
   return { slotId, at };
 }
 
-// ---------- account: register + login ----------
+// ---------- account: register + login + password reset ----------
+// HOW THESE FOUR CALLS SHOULD ANSWER (register, login, forgotPassword, resetPassword):
+//   success    200 / 201 with JSON, or 204. the pages don't read the body.
+//   failure    a 4xx status with JSON { "message": "text for the person", "fields": { "username": "text" } }   (fields is optional).
+//              when you write the real fetch, turn that into: throw Object.assign(new Error(message), { fields })
+//              (that is what the pages already catch). 429 = too many tries, e.g. "Too many tries. Please wait a few minutes."
+//   session    an httpOnly cookie. if the API is on another origin, the fetch calls need credentials: "include" and the server
+//              must allow our origin with CORS (or serve the API from the same origin / a dev proxy). protect the POST routes
+//              against CSRF (SameSite cookies and/or a CSRF token).
+//   not logged in   GET /me and the slot routes answer 401.
+//              todo(frontend): the pages don't send the person to /login on a 401 yet. add that when /me is real.
 // todo(backend): placeholder. Replace with POST /register.
 // payload = { firstName, lastName, username, email, password, avatar }   (avatar is null, or { style, seed, background })
 //   username and email arrive trimmed and in lowercase. the password is sent exactly as typed (never trimmed).
@@ -119,6 +131,8 @@ export async function register(payload) {
 
 // todo(backend): placeholder. Replace with POST /login.
 // payload = { identifier, password, remember }   (identifier is the username or the email, as typed)
+//   identifier  the page does NOT change its case. the server decides: with an @ it is an email, otherwise a username,
+//               and it compares without caring about case (register saves both in lowercase).
 //   remember  true = keep them logged in for a long time (e.g. a 30 day cookie), false = until the browser closes
 // On success the server starts the session (an httpOnly cookie is the safest) and this function returns. The page then goes to the dashboard.
 // When the server says no, THROW an Error. Its message shows above the button:
@@ -128,6 +142,29 @@ export async function register(payload) {
 // (If you ever need to mark one field, err.fields = { password: "..." } shows the text under that field.)
 export async function login(payload) {
   console.info("login payload (not sent anywhere yet)", { ...payload, password: "••••••••" });
+  await new Promise((resolve) => setTimeout(resolve, 700));
+}
+
+// todo(backend): placeholder. Replace with POST /forgot-password.
+// payload = { email }   (trimmed, in lowercase)
+// The server looks the email up and, if it has an account, emails a link to <our site>/reset-password?token=<token>.
+//   - the token: random, single use, expires in about 30 to 60 minutes. store only a hash of it.
+//   - ALWAYS answer the same (just return) whether the email has an account or not, so nobody can find out who is registered.
+//     the page always says "if that email has an account, we sent a link".
+//   - limit how many links one email (and one address) can ask for.
+// THROW an Error only when something is really wrong (the server is down, too many tries). Its message shows above the button.
+export async function forgotPassword(payload) {
+  console.info("forgot password payload (not sent anywhere yet)", payload);
+  await new Promise((resolve) => setTimeout(resolve, 700));
+}
+
+// todo(backend): placeholder. Replace with POST /reset-password.
+// payload = { token, password }   (token is the one from the link in the email. the password is sent exactly as typed, never trimmed)
+// The server checks the token (it exists, was not used, did not expire), checks the password rules again (8 to 72 characters,
+// a letter and a number), saves the hash of the new password, marks the token as used, and ideally ends the person's other sessions.
+// When the token is bad or old, THROW an Error such as "This link has expired. Ask for a new one." Its message shows above the button.
+export async function resetPassword(payload) {
+  console.info("reset password payload (not sent anywhere yet)", { ...payload, password: "••••••••" });
   await new Promise((resolve) => setTimeout(resolve, 700));
 }
 

@@ -1,3 +1,14 @@
+/* ==========================================================================
+   login.css: the login page (the forgot password and reset password pages use it too).
+   uses the colors and the .fm-card / .fm-input / .fm-btn pieces from shared.css.
+   every class here starts with fm-login, so nothing can clash with the other pages' css (it is all global).
+
+     .fm-login          the page: green cloth background, same weave as the register page
+     .fm-login__card    one card, split in two
+     .fm-login__mascot  the sprout side (the sprout itself is components/sprout)
+     .fm-login__formside the form side (the heading row holds the logo, in the top-right corner)
+   ========================================================================== */
+
 .fm-login {
   display: grid;
   place-items: center;
@@ -47,13 +58,13 @@
 .fm-login__logo {
   display: block;
   flex-shrink: 0;
-  height: 3rem;
+  height: 2.25rem;
   width: auto;
 }
 @media (min-width: 480px) {
   .fm-login__logo {
     position: absolute;
-    top: 0.75rem;
+    top: 0.6rem;
     right: 1rem;
   }
 }
@@ -85,6 +96,7 @@
   gap: 0.25rem 1rem;
 }
 .fm-login__cta {
+  text-decoration: none; /* it is also used on links (the forgot / reset pages) */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -185,4 +197,60 @@
 }
 .fm-login__mascot .fm-sprout__shadow {
   display: none;
+}
+
+/* ---------- used by the forgot password and reset password pages too (they import this file) ---------- */
+/* forgot / reset pages: the logo is the first thing in the form side. it floats in the corner like on the login page,
+   and on a very narrow phone it sits above the heading instead */
+@media (max-width: 479px) {
+  .fm-login__formside > .fm-login__logo {
+    align-self: flex-start;
+    margin-bottom: 0.75rem;
+  }
+}
+/* the message that replaces the form: "check your email", "password changed" */
+.fm-login__done {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* the password rules under the new password field */
+.fm-login-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+.fm-login-rules li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  opacity: 0.7;
+}
+.fm-login-rules li.is-ok {
+  font-weight: 700;
+  opacity: 1;
+  color: var(--kombu);
+}
+.fm-login-rules li.is-ok svg {
+  color: var(--dingley);
+}
+
+/* the gif on the forgot password page. no `animation` or pause rules here: it just keeps playing. */
+.fm-login__gif {
+  display: block;
+  width: 8rem;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+@media (min-width: 768px) {
+  .fm-login__gif {
+    width: 15rem;
+  }
 }
