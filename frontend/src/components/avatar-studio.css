@@ -1,0 +1,80 @@
+/* ==========================================================================
+   avatar-studio.css: the avatar maker (components/avatar-studio.jsx).
+   every class starts with fm-av, so it can't clash with other pages' css (it is all global).
+   ========================================================================== */
+
+.fm-av-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1rem;
+  background: #fff;
+  border: 3px solid var(--pine);
+  border-radius: 0.75rem;
+}
+.fm-av-styles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
+  gap: 0.6rem;
+}
+.fm-av-style {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 44px;
+  padding: 0.45rem 0.2rem 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  background: var(--paper);
+  border: 3px solid var(--pine);
+  border-radius: 0.75rem;
+}
+.fm-av-style[aria-pressed="true"] {
+  color: var(--paper);
+  background: var(--kombu);
+  box-shadow: 3px 3px 0 var(--copper);
+}
+.fm-av-style__thumb {
+  display: block;
+  width: 3.4rem;
+  height: 3.4rem;
+  overflow: hidden;
+  background: var(--brandy);
+  border: 2px solid var(--pine);
+  border-radius: 50%;
+}
+.fm-av-style__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.fm-av-swatch {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--pine);
+  border: 3px solid var(--pine);
+  border-radius: 50%;
+}
+.fm-av-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--copper);
+}
+/* "no background": a white circle with a diagonal line */
+.fm-av-swatch--none {
+  background: linear-gradient(135deg, #fff 44%, var(--danger) 44% 56%, #fff 56%);
+}
+@media (hover: hover) {
+  .fm-av-style:not([aria-pressed="true"]):hover {
+    background: var(--brandy);
+  }
+}
+
+.fm-av-style:focus-visible,
+.fm-av-swatch:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: 2px;
+}

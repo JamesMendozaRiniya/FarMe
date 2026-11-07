@@ -1,0 +1,188 @@
+.fm-login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1.25rem 1rem 3rem;
+  color: var(--pine);
+  background:
+    repeating-linear-gradient(45deg, rgba(251, 246, 234, 0.045) 0 2px, transparent 2px 5px),
+    var(--kombu);
+}
+.fm-login__card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: 60rem;
+  overflow: hidden;
+}
+
+/* ---------- the sprout side ---------- */
+.fm-login__mascot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 1rem 1.25rem 1.1rem;
+  background: linear-gradient(160deg, rgba(222, 197, 158, 0.5), rgba(222, 197, 158, 0.12) 80%);
+  border-bottom: 3px solid var(--pine);
+}
+/* the stitched edge, like the farmer card on the register page */
+.fm-login__mascot::after {
+  content: "";
+  position: absolute;
+  inset: 0.45rem;
+  border: 2px dashed rgba(106, 120, 77, 0.6);
+  border-radius: 0.75rem;
+  pointer-events: none;
+}
+.fm-login__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+/* the logo sits in the top-right corner of the form side */
+.fm-login__logo {
+  display: block;
+  flex-shrink: 0;
+  height: 3rem;
+  width: auto;
+}
+@media (min-width: 480px) {
+  .fm-login__logo {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+  }
+}
+/* very narrow phones: the logo goes on top of the heading */
+@media (max-width: 479px) {
+  .fm-login__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .fm-login__logo {
+    order: -1;
+  }
+}
+
+/* ---------- the form side ---------- */
+.fm-login__formside {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 1.25rem;
+}
+.fm-login__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+.fm-login__cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+}
+
+@media (min-width: 768px) {
+  .fm-login {
+    padding-top: 2.5rem;
+  }
+  .fm-login__card {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .fm-login__mascot {
+    padding: 1.5rem;
+    border-bottom: 0;
+    border-right: 3px solid var(--pine);
+  }
+  .fm-login__formside {
+    padding: 2.5rem 2rem;
+  }
+}
+
+/* ---------- small pieces ---------- */
+/* a field with a mistake */
+.fm-login-bad {
+  border-color: var(--danger);
+}
+.fm-login-formerror {
+  padding: 0.6rem 0.8rem;
+  background: #fff;
+  border: 3px solid var(--danger);
+  border-radius: 0.75rem;
+}
+.fm-login-link {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.fm-login-link:focus-visible,
+.fm-login-toggle input:focus-visible,
+.fm-login-eye:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: 2px;
+}
+.fm-login-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fm-login-toggle input {
+  width: 1.3rem;
+  height: 1.3rem;
+  accent-color: var(--kombu);
+}
+/* the password field with the eye inside it */
+.fm-login-pw {
+  position: relative;
+}
+.fm-login-pw .fm-input {
+  padding-right: 3rem;
+}
+.fm-login-eye {
+  position: absolute;
+  top: 50%;
+  right: 0.25rem;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--pine);
+  border-radius: 0.5rem;
+  transform: translateY(-50%);
+}
+@media (hover: hover) {
+  .fm-login-eye:hover {
+    background: var(--brandy);
+  }
+}
+
+/* the sprout stands on a little patch of grass (the shadow from sprout.css is not needed here) */
+.fm-login__mascot .fm-sprout::before {
+  content: "";
+  position: absolute;
+  left: -16%;
+  right: -16%;
+  bottom: -2%;
+  height: 21%;
+  background:
+    radial-gradient(ellipse at 50% 20%, #c2cf9f 0 35%, transparent 36%),
+    var(--dingley);
+  border: 3px solid var(--pine);
+  border-radius: 50%;
+}
+.fm-login__mascot .fm-sprout__shadow {
+  display: none;
+}

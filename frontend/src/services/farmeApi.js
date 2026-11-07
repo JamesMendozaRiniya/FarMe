@@ -1,21 +1,6 @@
-// farmeApi.js: every call that leaves the app lives in this file (storage, user, weather, AI, chat).
-// No React and no UI in here, so each function can be swapped for a real backend call one at a time.
-// The pages only depend on the return shapes documented below, so keep those the same.
-//
-// CURRENT STATUS (nothing here talks to our server yet)
-//   - slots + notification marks are saved in the browser's localStorage (see `db`)
-//   - getUser, logout and logWatering are placeholders
-//   - weather and place search call Open-Meteo / Nominatim straight from the browser (free, no key)
-//   - AI recommendations and chat are off until AI_ENDPOINT / CHAT_ENDPOINT are set (the app has fallbacks)
-//
-// RULES FOR THE SERVER
-//   - Secrets (like the Anthropic key) stay on the server. Never put them in this file.
-//   - Only return the signed-in user's data.
-//   - Re-check everything the browser validates (plot size, names, soil, grid position).
-//   - Ids are made in the browser with crypto.randomUUID(). Accept them, or generate your own and
-//     return them. Either way they are strings.
-//
 // ENDPOINTS THE PAGES NEED (the same `todo(backend)` tags in dashboard.jsx / library.jsx mark where each is called)
+//   todo(backend): register       POST /register                       -> register()      (the register page)
+//   todo(backend): login          POST /login                          -> login()         (the login page)
 //   todo(backend): user           GET /me                              -> getUser()
 //                                 POST /logout                         -> logout()
 //   todo(backend): slots          GET /slots                           -> db.loadSlots()   (return each slot with its plants, harvests, notes)
@@ -46,7 +31,7 @@
 //              amount is free text typed by the user (e.g. "2 kg"). kept = true if the plant kept growing.
 //   note     { id, cropKeys[], plantIds?[], date, text }
 //   crops    are not in the database. They live in data/crops.jsx and are referenced by `cropKey`, which must never be renamed.
-//   user     { username, firstName, lastName, role?, avatarUrl? }   (see getUser)
+//   user     { username, firstName, lastName, role?, avatar?, avatarUrl? }   (see getUser)
 
 // Put the server routes here when they exist. While they're null the app uses its own fallbacks.
 export const AI_ENDPOINT = null; // e.g. "/api/recommend" -> crop suggestions
@@ -113,14 +98,49 @@ export async function logWatering(slotId, at) {
   return { slotId, at };
 }
 
+// ---------- account: register + login ----------
+// todo(backend): placeholder. Replace with POST /register.
+// payload = { firstName, lastName, username, email, password, avatar }   (avatar is null, or { style, seed, background })
+//   username and email arrive trimmed and in lowercase. the password is sent exactly as typed (never trimmed).
+// The server must:
+//   - check every field again (the page's checks only help people early): names 1 to 40 characters, username 3 to 20
+//     (letters, numbers, underscores), a valid email, password 8 to 72 characters with a letter and a number
+//   - keep username and email unique (they arrive lowercase, so compare them without caring about case)
+//   - store only a hash of the password (bcrypt or argon2), never the password itself
+//   - save the avatar object as it is and return it from GET /me
+//   - later, maybe send a confirmation email before the account can log in
+// When the server says no, THROW an Error. Its message shows above the button. If it names fields, they show under those fields:
+//   const err = new Error("..."); err.fields = { username: "That username is taken." }; throw err;
+// On success just return (the page then shows "Log in"). Nobody is logged in yet.
+export async function register(payload) {
+  console.info("register payload (not sent anywhere yet)", { ...payload, password: "••••••••" });
+  await new Promise((resolve) => setTimeout(resolve, 700));
+}
+
+// todo(backend): placeholder. Replace with POST /login.
+// payload = { identifier, password, remember }   (identifier is the username or the email, as typed)
+//   remember  true = keep them logged in for a long time (e.g. a 30 day cookie), false = until the browser closes
+// On success the server starts the session (an httpOnly cookie is the safest) and this function returns. The page then goes to the dashboard.
+// When the server says no, THROW an Error. Its message shows above the button:
+//   throw new Error("The username/email or the password is wrong.");
+// Keep that message the same for "no such user" and "wrong password", so nobody can find out who has an account.
+// The server should also limit how many tries one person can make.
+// (If you ever need to mark one field, err.fields = { password: "..." } shows the text under that field.)
+export async function login(payload) {
+  console.info("login payload (not sent anywhere yet)", { ...payload, password: "••••••••" });
+  await new Promise((resolve) => setTimeout(resolve, 700));
+}
+
 // ---------- user ----------
 // todo(backend): placeholder user. Replace with GET /me for the signed-in user.
-// Must return: { username, firstName, lastName, role?, avatarUrl? }
+// Must return: { username, firstName, lastName, role?, avatar?, avatarUrl? }
 //   username    shown in the dashboard greeting ("Hello, <username>") and the library title ("<username>'s Library")
 //   firstName / lastName   shown in the sidebar user card (and used for the initials)
 //   role        optional, shown under the name in the sidebar (defaults to "Farmer")
 //   avatarUrl   optional, a full image URL for the profile photo. Leave it out or null and the sidebar shows initials.
 //               If the image fails to load the sidebar falls back to the initials.
+//   avatar      optional, the object made on the register page: { style, seed, background } (see avatar.js). Save it as is and
+//               return it as is. The sidebar draws it with useAvatarUri(user.avatar), then falls back to avatarUrl, then initials.
 export async function getUser() {
   return { username: "Juan", firstName: "Juan", lastName: "Dela Cruz", role: "Farmer", avatarUrl: null };
 }

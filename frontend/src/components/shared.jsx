@@ -17,8 +17,8 @@ import {
 } from "lucide-react";
 import "./shared.css";
 import { logout, sendChat } from "../services/farmeApi";
+import { useAvatarUri } from "./avatar";
 
-// nav images. heads up: vite needs the file extension (.png) in these imports
 import sidebarLogo from "../assets/sidebar-logo.png";
 import sidebarDashboard from "../assets/sidebar-dashboard.png";
 import sidebarLibrary from "../assets/sidebar-library.png";
@@ -431,7 +431,7 @@ const markImg = (key, state) =>
 const initials = (u) =>
   `${(u?.firstName || "")[0] || ""}${(u?.lastName || "")[0] || ""}`.toUpperCase() || "?";
 
-// todo(backend): `user` comes from getUser() (GET /me). avatarUrl = a full image URL for the profile photo; leave it out and the card shows initials.
+// todo(backend): `user` comes from getUser() (GET /me). avatar = { style, seed, background } from the register page, drawn in the browser. avatarUrl = a full image URL for the profile photo. Leave both out and the card shows initials.
 export function Sidebar({ active = "dashboard", user, onHome }) {
   const [collapsed, setCollapsed] = useState(() => {
     if (!isWide()) return true; // phones always start closed
@@ -462,6 +462,7 @@ export function Sidebar({ active = "dashboard", user, onHome }) {
   const [askLogout, setAskLogout] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false); // true when avatarUrl can't be loaded, so we show initials instead
   useEffect(() => setAvatarFailed(false), [user?.avatarUrl]);
+  const avatarUri = useAvatarUri(user?.avatar);
   const name = user ? `${user.firstName} ${user.lastName}`.trim() : "";
 
   return (
@@ -544,7 +545,9 @@ export function Sidebar({ active = "dashboard", user, onHome }) {
             {name && (
               <div className="fm-user" title={name}>
                 <span className="fm-user__avatar" aria-hidden="true">
-                  {user.avatarUrl && !avatarFailed ? (
+                  {avatarUri ? (
+                    <img src={avatarUri} alt="" draggable={false} />
+                  ) : user.avatarUrl && !avatarFailed ? (
                     <img src={user.avatarUrl} alt="" draggable={false} onError={() => setAvatarFailed(true)} />
                   ) : (
                     initials(user)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useId } from "react";
 import {
   Play,
   Pause,
@@ -10,6 +10,9 @@ import {
   Crosshair,
   MapPin,
   Droplets,
+  Leaf,
+  ChevronDown,
+  Info,
   Check,
   CheckCheck,
 } from "lucide-react";
@@ -76,8 +79,8 @@ const fmt = (n) => String(Number(n.toFixed(2)));
 // philippine seasons: wet = june to november, dry = december to may
 const seasonNow = () =>
   new Date().getMonth() >= 5 && new Date().getMonth() <= 10
-    ? { key: "wet", label: "Wet season", span: "June to November" }
-    : { key: "dry", label: "Dry season", span: "December to May" };
+    ? { key: "wet", label: "Wet season", span: "Jun – Nov" }
+    : { key: "dry", label: "Dry season", span: "Dec – May" };
 // checks a width / length the user typed and returns either a number or an error message
 function parseDim(text) {
   const t = text.trim().replace(",", ".");
@@ -304,51 +307,272 @@ function SlotThumb() {
 // props: wx = { data, loading } from useWeather, season = { key, label, span } from seasonNow,
 //        onSetLocation = optional, shows a "set location" link when there's no weather
 // styles are in dashboard.css (.fm-conditions). the season half is kombu in the wet season and copper in the dry season.
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return matches;
+}
+
+function useCountUp(target, ms = 800) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (target == null) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return setVal(target);
+    let raf;
+    const t0 = performance.now();
+    const tick = (t) => {
+      const k = Math.min(1, (t - t0) / ms);
+      setVal(Math.round(target * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  return val;
+}
+
 function ConditionsBar({ wx, season, onSetLocation }) {
+  const [open, setOpen] = useState(false);
+  const desktop = useMediaQuery("(min-width: 768px)");
+  const bodyId = useId();
   const w = wx.data;
+  const shownTemp = useCountUp(w ? w.temp : null);
   return (
     <div className="fm-conditions" role="group" aria-label="Weather and season">
-      <div className="fm-conditions__cell">
-        <span className="fm-conditions__icon" aria-hidden="true">
-          {w ? w.emoji : "🌡️"}
-        </span>
-        <div className="min-w-0">
-          <p className="fm-conditions__big">{w ? `${w.temp}°C` : wx.loading ? "…" : "--"}</p>
-          <p className="fm-conditions__small">
-            {w ? (
-              `${w.label} · ${w.humidity}% humidity`
-            ) : wx.loading ? (
-              "Loading weather"
-            ) : onSetLocation ? (
-              <button
-                type="button"
-                onClick={onSetLocation}
-                className="min-h-[44px] text-left underline font-bold"
-              >
-                Weather unavailable. Set location
-              </button>
-            ) : (
-              "Weather unavailable"
-            )}
-          </p>
+      {desktop ? (
+        <div className="fm-conditions__head">
+          <Leaf size={22} className="fm-conditions__leaf" aria-hidden="true" />
+          <span className="fm-conditions__title">Farm Conditions</span>
         </div>
-      </div>
-      <div className={`fm-conditions__cell fm-conditions__cell--${season.key}`}>
-        <span className="fm-conditions__icon" aria-hidden="true">
-          {season.key === "wet" ? "🌧️" : "☀️"}
-        </span>
-        <div className="min-w-0">
-          <p className="fm-conditions__big">{season.label}</p>
-          <p className="fm-conditions__small">{season.span}</p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          className="fm-conditions__head"
+        >
+          <Leaf size={22} className="fm-conditions__leaf" aria-hidden="true" />
+          <span className="fm-conditions__title">Farm Conditions</span>
+          {!open && (
+            <span className="fm-conditions__summary">
+              {wx.loading && <span className="fm-conditions__pulse" aria-hidden="true" />}
+              {w ? `${w.emoji} ${w.temp}°C · ` : ""}
+              {season.label}
+            </span>
+          )}
+          <span className="fm-conditions__toggle" aria-hidden="true">
+            <ChevronDown size={20} className="fm-conditions__chev" />
+          </span>
+        </button>
+      )}
+      <div id={bodyId} className="fm-collapse" data-open={desktop || open}>
+        <div className="fm-collapse__inner">
+          <div className="fm-conditions__body">
+            <div
+              key={w ? "ready" : wx.loading ? "loading" : "none"}
+              className="fm-conditions__weather"
+              aria-busy={wx.loading}
+            >
+              {wx.loading && !w ? (
+                <>
+                  <span className="fm-skel fm-skel--icon" aria-hidden="true" />
+                  <div className="min-w-0 flex flex-col gap-2">
+                    <span className="fm-skel fm-skel--temp" aria-hidden="true" />
+                    <span className="fm-skel fm-skel--line" aria-hidden="true" />
+                    <span className="sr-only">Loading weather</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="fm-conditions__icon" aria-hidden="true">
+                    <span className="fm-conditions__emoji">{w ? w.emoji : "🌡️"}</span>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="fm-conditions__temp">{w ? `${shownTemp}°C` : "--"}</p>
+                    {w ? (
+                      <>
+                        <p className="fm-conditions__label">{w.label}</p>
+                        <p className="fm-conditions__meta fm-conditions__humidity">
+                          <Droplets size={14} aria-hidden="true" />
+                          <span className="fm-conditions__hval">{w.humidity}%</span>
+                          <span className="fm-conditions__hlabel">humidity</span>
+                        </p>
+                      </>
+                    ) : onSetLocation ? (
+                      <button
+                        type="button"
+                        onClick={onSetLocation}
+                        className="min-h-[44px] text-left underline font-bold text-sm"
+                      >
+                        Weather unavailable. Set location
+                      </button>
+                    ) : (
+                      <p className="fm-conditions__label">Weather unavailable</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className={`fm-conditions__season fm-conditions__season--${season.key}`}>
+              <span className="fm-conditions__fx" aria-hidden="true">
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <span key={i} style={{ "--i": i }} />
+                ))}
+              </span>
+              <p className="fm-conditions__meta">
+                <Leaf size={16} className="fm-conditions__leaf" aria-hidden="true" /> Current season
+              </p>
+              <p className="fm-conditions__temp">{season.label}</p>
+              <p className="fm-conditions__label">{season.span}</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+function CropDropdown({ id, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const root = useRef(null);
+  const listId = useId();
+  const groups = [
+    ["Vegetables", CROPS.filter((c) => c.type === "vegetable")],
+    ["Fruits", CROPS.filter((c) => c.type === "fruit")],
+  ];
+  const flat = [null, ...groups.flatMap(([, items]) => items)];
+  const selected = cropByKey(value);
+  const optId = (i) => `${listId}-${i}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => {
+      if (root.current && !root.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) document.getElementById(optId(active))?.scrollIntoView({ block: "nearest" });
+  }, [open, active]);
+
+  const openList = () => {
+    setActive(Math.max(0, flat.findIndex((c) => (c ? c.key : null) === (value || null))));
+    setOpen(true);
+  };
+  const choose = (i) => {
+    onChange(flat[i] ? flat[i].key : null);
+    setOpen(false);
+  };
+  const onKeyDown = (e) => {
+    if (e.key === "Escape" && open) {
+      e.preventDefault();
+      return setOpen(false);
+    }
+    if (e.key === "Tab") return setOpen(false);
+    const move = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+    if (move) {
+      e.preventDefault();
+      if (!open) return openList();
+      return setActive((i) => Math.min(flat.length - 1, Math.max(0, i + move)));
+    }
+    if (open && e.key === "Home") {
+      e.preventDefault();
+      setActive(0);
+    } else if (open && e.key === "End") {
+      e.preventDefault();
+      setActive(flat.length - 1);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (open) choose(active);
+      else openList();
+    }
+  };
+
+  return (
+    <div className="fm-dropdown" ref={root}>
+      <button
+        type="button"
+        id={id}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={open ? optId(active) : undefined}
+        onClick={() => (open ? setOpen(false) : openList())}
+        onKeyDown={onKeyDown}
+        className="fm-dropdown__button"
+      >
+        {selected ? (
+          <>
+            <span className="text-xl" aria-hidden="true">
+              {selected.emoji}
+            </span>
+            <span className="flex-1 truncate">{selected.name}</span>
+          </>
+        ) : (
+          <span className="flex-1 truncate fm-dropdown__placeholder">Select a crop</span>
+        )}
+        <ChevronDown size={20} className="fm-dropdown__chevron" aria-hidden="true" />
+      </button>
+      {open && (
+        <ul id={listId} role="listbox" aria-label="Crops" className="fm-dropdown__list">
+          <li
+            id={optId(0)}
+            role="option"
+            aria-selected={!value}
+            onClick={() => choose(0)}
+            onMouseMove={() => setActive(0)}
+            className={`fm-dropdown__option ${active === 0 ? "fm-dropdown__option--active" : ""}`}
+          >
+            No crop selected
+          </li>
+          {groups.map(([label, items]) => (
+            <li key={label} role="presentation" className="contents">
+              <p className="fm-dropdown__group" aria-hidden="true">
+                {label}
+              </p>
+              <ul role="group" aria-label={label}>
+                {items.map((c) => {
+                  const i = flat.indexOf(c);
+                  return (
+                    <li
+                      key={c.key}
+                      id={optId(i)}
+                      role="option"
+                      aria-selected={value === c.key}
+                      onClick={() => choose(i)}
+                      onMouseMove={() => setActive(i)}
+                      className={`fm-dropdown__option ${active === i ? "fm-dropdown__option--active" : ""}`}
+                    >
+                      <span className="text-xl" aria-hidden="true">
+                        {c.emoji}
+                      </span>
+                      {c.name}
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function InfoBox({ slot }) {
   const items = [
-    ["Plot size", `${fmt(slot.widthM)} × ${fmt(slot.lengthM)} m`],
+    ["Plot size", `${fmt(slot.widthM)} × ${fmt(slot.lengthM)} m = ${fmt(slot.widthM * slot.lengthM)} m²`],
     ["Soil type", slot.soil],
     ["Location", slot.place || slot.location || "Not set"],
   ];
@@ -364,6 +588,50 @@ function InfoBox({ slot }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SlotTitle({ slot }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef(null);
+  const panelId = useId();
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => {
+      if (root.current && !root.current.contains(e.target)) setOpen(false);
+    };
+    const esc = (e) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  return (
+    <div className="relative min-w-0" ref={root}>
+      <div className="flex items-start gap-1">
+        <h2 className="font-display text-2xl font-bold truncate">{slot.name}</h2>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label="Field details"
+          className="relative shrink-0 p-0.5 text-[#33432B] before:absolute before:-inset-2 before:content-['']"
+        >
+          <Info size={15} aria-hidden="true" />
+        </button>
+      </div>
+      {open && (
+        <div
+          id={panelId}
+          className="fm-card absolute left-0 top-full mt-2 z-20 w-[min(22rem,calc(100vw-3rem))] p-3"
+        >
+          <InfoBox slot={slot} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1387,6 +1655,7 @@ export default function FarMeDashboard() {
   const wxSlot = flowSlot || slot || null;
   const wx = useWeather(wxSlot?.lat, wxSlot?.lon);
   const season = seasonNow();
+  const isDesktop = useMediaQuery("(min-width: 768px)");
 
   // grid size, planted squares (by row-col), and the selected square's plant
   const grid = useMemo(
@@ -1845,8 +2114,11 @@ export default function FarMeDashboard() {
               <span />
             )}
             {slot ? (
-              <div className="flex items-center gap-3 flex-wrap justify-end">
-                <div className="text-sm text-right" aria-live="polite">
+              <div className="contents sm:flex sm:items-center sm:gap-3 sm:flex-wrap sm:justify-end">
+                <div
+                  className="order-3 basis-full text-sm text-right -mt-2 sm:mt-0 sm:order-none sm:basis-auto"
+                  aria-live="polite"
+                >
                   <p className="font-bold">
                     {slot.lastWatered
                       ? `Last watered: ${wateredToday(slot, now) ? "today" : new Date(slot.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })}, ${new Date(slot.lastWatered).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
@@ -1868,7 +2140,7 @@ export default function FarMeDashboard() {
                       ? "Plant something first"
                       : "Log that you watered this slot"
                   }
-                  className={`fm-btn fm-btn--primary flex items-center gap-2`}
+                  className={`fm-btn fm-btn--primary flex items-center gap-2 order-2 sm:order-none`}
                 >
                   <Droplets size={16} /> Water plants
                 </button>
@@ -1961,13 +2233,7 @@ export default function FarMeDashboard() {
           {slot && grid && (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="font-display text-2xl font-bold">{slot.name}</h2>
-                  <p>
-                    {fmt(slot.widthM)} × {fmt(slot.lengthM)} m = {fmt(slot.widthM * slot.lengthM)}{" "}
-                    m² · {slot.soil} soil · {slot.place || slot.location}
-                  </p>
-                </div>
+                <SlotTitle slot={slot} />
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setFlow({ step: "detail", id: slot.id })}
@@ -1995,18 +2261,37 @@ export default function FarMeDashboard() {
               <div
                 className={`bg-[#DEC59E] border-[3px] border-[#202808] rounded-xl p-3 flex flex-col gap-3`}
               >
-                <div>
-                  <p className="font-bold mb-2">Vegetables</p>
-                  <div className="flex flex-wrap gap-2">
-                    {CROPS.filter((c) => c.type === "vegetable").map(cropButton)}
+                {isDesktop ? (
+                  <>
+                    <div>
+                      <p className="font-bold mb-2">Vegetables</p>
+                      <div className="flex flex-wrap gap-2">
+                        {CROPS.filter((c) => c.type === "vegetable").map(cropButton)}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="font-bold mb-2">Fruits</p>
+                      <div className="flex flex-wrap gap-2">
+                        {CROPS.filter((c) => c.type === "fruit").map(cropButton)}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label htmlFor="crop-pick" className="block font-bold mb-2">
+                      Crop to plant
+                    </label>
+                    <CropDropdown
+                      id="crop-pick"
+                      value={brush}
+                      onChange={(key) => {
+                        setBrush(key);
+                        setTool(null);
+                        clearTrowel();
+                      }}
+                    />
                   </div>
-                </div>
-                <div>
-                  <p className="font-bold mb-2">Fruits</p>
-                  <div className="flex flex-wrap gap-2">
-                    {CROPS.filter((c) => c.type === "fruit").map(cropButton)}
-                  </div>
-                </div>
+                )}
                 <div className="flex flex-wrap items-center gap-3">
                   <label htmlFor="planted-on" className="font-bold">
                     Planting date
