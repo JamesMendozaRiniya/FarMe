@@ -4,6 +4,10 @@
 //   todo(backend): password       POST /forgot-password                -> forgotPassword()  (the forgot password page)
 //                                 POST /reset-password                 -> resetPassword()   (the reset password page)
 //   todo(backend): user           GET /me                              -> getUser()
+//   todo(backend): settings       PATCH /me { firstName, lastName, username, avatar }   -> updateProfile()   (the settings page)
+//                                 POST /me/email { email, currentPassword }             -> changeEmail()
+//                                 POST /me/password { currentPassword, newPassword }    -> changePassword()
+//                                 DELETE /me { password }                               -> deleteAccount()
 //                                 POST /logout                         -> logout()
 //   todo(backend): slots          GET /slots                           -> db.loadSlots()   (return each slot with its plants, harvests, notes)
 //                                 POST /slots, PATCH /slots/:id, DELETE /slots/:id
@@ -33,9 +37,26 @@
 //              amount is free text typed by the user (e.g. "2 kg"). kept = true if the plant kept growing.
 //   note     { id, cropKeys[], plantIds?[], date, text }
 //   crops    are not in the database. They live in data/crops.jsx and are referenced by `cropKey`, which must never be renamed.
-//   user     { username, firstName, lastName, role?, avatar?, avatarUrl? }   (see getUser)
+//   user     { username, firstName, lastName, email, role?, avatar?, avatarUrl? }   (see getUser)
+
+// NOTES FOR WHOEVER BUILDS THE SERVER (things the pages assume but the code can't show)
+//   ids         the browser creates the ids of slots, plants, harvests and notes with crypto.randomUUID(). Either accept them as the primary
+//               keys, or ignore them and RETURN your own ids from the POST routes (then the pages must use the returned ids: tell the frontend).
+//   plants      unique per (slot_id, row, col), and row / col must be inside the slot's grid (see the grid rule above). Reject anything else.
+//   avatar      never trust it: only accept a style from an allowed list, a seed up to ~40 characters and a background that is a hex color.
+//   passwords   a WRONG current password (changeEmail, changePassword, deleteAccount) must answer 400 / 403 / 422, NOT 401. The pages send
+//               the person to /login on every 401, and 401 means only "you have no session".
+//   email       if changeEmail returns { pending: true }, the server also needs the route the emailed link opens (e.g. GET /confirm-email?token=...).
+//   ai          POST /recommend and /chat: keep the Anthropic API key on the server only (never in this file or in any VITE_ variable),
+//               require a logged-in user, rate limit them, and cap the size of `messages` and `context`.
+//   slots       until the per-slot routes exist, saveSlots sends the WHOLE list. When the server stores slots for real, the server must not
+//               delete slots that are missing from a request.
 
 // Put the server routes here when they exist. While they're null the app uses its own fallbacks.
+// API_BASE: set it to the server's address (e.g. "http://localhost:3000/api", or "/api" with a dev proxy) and the account + settings calls
+// below stop using their placeholders and call the real routes through request(). While it is null nothing is sent anywhere.
+// (slots / plants / harvests / notes still go through db.* until their per-slot calls are written, see the endpoint list.)
+export const API_BASE = null;
 export const AI_ENDPOINT = null; // e.g. "/api/recommend" -> crop suggestions
 export const CHAT_ENDPOINT = null; // e.g. "/api/chat" -> chatbot replies
 
@@ -100,6 +121,38 @@ export async function logWatering(slotId, at) {
   return { slotId, at };
 }
 
+// ---------- request(): the one place that talks to the server ----------
+// Used by the account + settings calls below when API_BASE is set. It
+//   - sends the session cookie (credentials: "include"). the server must allow our origin with CORS and credentials, or use a dev proxy
+//   - turns a failed answer into the Error the pages already catch: throw Object.assign(new Error(message), { fields, status })
+//   - sends the person to /login when the server says 401 (no session), except for the public calls (public: true), because a 401
+//     from /login itself just means "wrong password" and must be shown on the page
+//   - returns the JSON body, or null when there is none (204)
+const LOGIN_PATH = "/login";
+async function request(path, { method = "GET", body, public: isPublic = false } = {}) {
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      credentials: "include",
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("We couldn't reach the server. Check your connection and try again.");
+  }
+  if (res.status === 401 && !isPublic) {
+    window.location.assign(LOGIN_PATH);
+    throw new Error("Please log in again.");
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(data.message || "Something went wrong. Please try again."), { fields: data.fields, status: res.status });
+  }
+  if (res.status === 204) return null;
+  return res.json().catch(() => null);
+}
+
 // ---------- account: register + login + password reset ----------
 // HOW THESE FOUR CALLS SHOULD ANSWER (register, login, forgotPassword, resetPassword):
 //   success    200 / 201 with JSON, or 204. the pages don't read the body.
@@ -125,6 +178,7 @@ export async function logWatering(slotId, at) {
 //   const err = new Error("..."); err.fields = { username: "That username is taken." }; throw err;
 // On success just return (the page then shows "Log in"). Nobody is logged in yet.
 export async function register(payload) {
+  if (API_BASE) return request("/register", { method: "POST", body: payload, public: true });
   console.info("register payload (not sent anywhere yet)", { ...payload, password: "••••••••" });
   await new Promise((resolve) => setTimeout(resolve, 700));
 }
@@ -141,6 +195,7 @@ export async function register(payload) {
 // The server should also limit how many tries one person can make.
 // (If you ever need to mark one field, err.fields = { password: "..." } shows the text under that field.)
 export async function login(payload) {
+  if (API_BASE) return request("/login", { method: "POST", body: payload, public: true });
   console.info("login payload (not sent anywhere yet)", { ...payload, password: "••••••••" });
   await new Promise((resolve) => setTimeout(resolve, 700));
 }
@@ -154,6 +209,7 @@ export async function login(payload) {
 //   - limit how many links one email (and one address) can ask for.
 // THROW an Error only when something is really wrong (the server is down, too many tries). Its message shows above the button.
 export async function forgotPassword(payload) {
+  if (API_BASE) return request("/forgot-password", { method: "POST", body: payload, public: true });
   console.info("forgot password payload (not sent anywhere yet)", payload);
   await new Promise((resolve) => setTimeout(resolve, 700));
 }
@@ -164,28 +220,116 @@ export async function forgotPassword(payload) {
 // a letter and a number), saves the hash of the new password, marks the token as used, and ideally ends the person's other sessions.
 // When the token is bad or old, THROW an Error such as "This link has expired. Ask for a new one." Its message shows above the button.
 export async function resetPassword(payload) {
+  if (API_BASE) return request("/reset-password", { method: "POST", body: payload, public: true });
   console.info("reset password payload (not sent anywhere yet)", { ...payload, password: "••••••••" });
   await new Promise((resolve) => setTimeout(resolve, 700));
 }
 
 // ---------- user ----------
 // todo(backend): placeholder user. Replace with GET /me for the signed-in user.
-// Must return: { username, firstName, lastName, role?, avatar?, avatarUrl? }
+// Must return: { username, firstName, lastName, email, role?, avatar?, avatarUrl? }
 //   username    shown in the dashboard greeting ("Hello, <username>") and the library title ("<username>'s Library")
 //   firstName / lastName   shown in the sidebar user card (and used for the initials)
+//   email       shown on the settings page (the person's current email)
 //   role        optional, shown under the name in the sidebar (defaults to "Farmer")
 //   avatarUrl   optional, a full image URL for the profile photo. Leave it out or null and the sidebar shows initials.
 //               If the image fails to load the sidebar falls back to the initials.
 //   avatar      optional, the object made on the register page: { style, seed, background } (see avatar.js). Save it as is and
 //               return it as is. The sidebar draws it with useAvatarUri(user.avatar), then falls back to avatarUrl, then initials.
+//
+// The settings calls below only change this placeholder user: they save to localStorage (USER_KEY) so a change survives a reload
+// while there is no server. When GET /me is real, delete USER_KEY, saveUserLocal() and the `saved` lines.
+const USER_KEY = "farme.user.v1";
+function readUserLocal() {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+function saveUserLocal(patch) {
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify({ ...readUserLocal(), ...patch }));
+  } catch {
+    /* storage is full or blocked, so skip saving */
+  }
+}
 export async function getUser() {
-  return { username: "Juan", firstName: "Juan", lastName: "Dela Cruz", role: "Farmer", avatarUrl: null };
+  if (API_BASE) return request("/me");
+  return {
+    username: "Juan",
+    firstName: "Juan",
+    lastName: "Dela Cruz",
+    email: "juan@example.com",
+    role: "Farmer",
+    avatarUrl: null,
+    ...readUserLocal(),
+  };
 }
 
-// todo(backend): placeholder. POST /logout, i.e. call the backend logout (end the session / clear the token), then go to the login page.
-// Change "/login" to the real login route.
+// ---------- settings ----------
+// These four answer like the account calls above (see HOW THESE FOUR CALLS SHOULD ANSWER): success = just return,
+// failure = THROW an Error whose message shows in the section, and err.fields = { username: "..." } shows under a field.
+// Every one of them needs a logged-in person (401 when not). The server must check every field again.
+
+// todo(backend): placeholder. Replace with PATCH /me.
+// payload = { firstName, lastName, username, avatar }   (names trimmed, username trimmed and lowercase, avatar is null or { style, seed, background })
+// Save them and answer. Username must stay unique (compare without caring about case): when it is taken,
+//   throw Object.assign(new Error("That username is taken."), { fields: { username: "That username is taken." } })
+// A new username is also what the person logs in with from then on.
+export async function updateProfile(payload) {
+  if (API_BASE) return request("/me", { method: "PATCH", body: payload });
+  console.info("update profile payload (saved on this device only)", payload);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  saveUserLocal(payload);
+}
+
+// todo(backend): placeholder. Replace with POST /me/email.
+// payload = { email, currentPassword }   (email trimmed and lowercase. the password is sent exactly as typed, never trimmed)
+// Check the current password (a wrong one is err.fields = { currentPassword: "That password isn't right." }), keep the email unique, and
+// save it. If you want the new address confirmed first, send a link to it and keep the old email until it is opened.
+// RETURN { pending: true } in that case (the page then says "we sent a link"), or { pending: false } when the email changed right away.
+export async function changeEmail(payload) {
+  if (API_BASE) return request("/me/email", { method: "POST", body: payload });
+  console.info("change email payload (saved on this device only)", { ...payload, currentPassword: "••••••••" });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  saveUserLocal({ email: payload.email });
+  return { pending: false };
+}
+
+// todo(backend): placeholder. Replace with POST /me/password.
+// payload = { currentPassword, newPassword }   (both exactly as typed, never trimmed)
+// Check the current password (wrong one: err.fields = { currentPassword: "That password isn't right." }), check the new one
+// (8 to 72 characters, a letter and a number), save only its hash, and ideally end the person's OTHER sessions.
+export async function changePassword(payload) {
+  if (API_BASE) return request("/me/password", { method: "POST", body: payload });
+  console.info("change password payload (not sent anywhere yet)", { currentPassword: "••••••••", newPassword: "••••••••" });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+}
+
+// todo(backend): placeholder. Replace with DELETE /me.
+// payload = { password }   (the current password, exactly as typed)
+// Check the password (wrong one: throw an Error, e.g. "That password isn't right."), then delete the person AND everything that belongs to them:
+// slots, plants, harvests, notes, notification marks and the avatar. End the session. This cannot be undone.
+// Until the data is on the server, the placeholder below clears what this browser keeps. The page then shows a goodbye and goes to the register page.
+export async function deleteAccount(payload) {
+  if (API_BASE) return request("/me", { method: "DELETE", body: payload });
+  console.info("delete account (clears this browser's data only)", { password: payload?.password ? "••••••••" : "" });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  [STORAGE_KEY, NOTIF_KEY, USER_KEY, "farme.chat.v1"].forEach((k) => {
+    try {
+      localStorage.removeItem(k);
+    } catch {
+      /* blocked, so skip */
+    }
+  });
+}
+
+// With API_BASE set this calls POST /logout (the server ends the session and clears the cookie), then goes to the login page.
+// If the call fails the person still goes to the login page. Change LOGIN_PATH above if the login route changes.
 export async function logout() {
-  window.location.assign("/login");
+  if (API_BASE) await request("/logout", { method: "POST", public: true }).catch(() => {});
+  window.location.assign(LOGIN_PATH);
 }
 
 // ---------- location + weather (Open-Meteo: free, no API key, works from the browser) ----------

@@ -4,6 +4,7 @@ import Register from "./pages/register/register";
 import Login from "./pages/login/login";
 import ForgotPassword from "./pages/forgot-password/forgot-password";
 import ResetPassword from "./pages/reset-password/reset-password";
+import Settings from "./pages/settings/settings";
 
 export default function App() {
   const path = window.location.pathname;
@@ -12,5 +13,6 @@ export default function App() {
   if (path.startsWith("/login")) return <Login />;
   if (path.startsWith("/forgot-password")) return <ForgotPassword />;
   if (path.startsWith("/reset-password")) return <ResetPassword />;
+  if (path.startsWith("/settings")) return <Settings />;
   return <FarMeDashboard />; // "/" and "/dashboard"
 }
