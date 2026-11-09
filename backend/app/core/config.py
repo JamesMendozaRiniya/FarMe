@@ -8,12 +8,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     COOKIE_SECURE: bool = False
 
-    # Email (password reset). Optional: the API still starts without them,
-    # but reset emails can only be sent once they are filled in.
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_EMAIL: str = ""
     SMTP_PASSWORD: str = ""
+
+    GEMINI_API_KEY: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -514,29 +514,55 @@ export async function fetchRecommendations(ctx) {
 
 // ---------- AI: CHATBOT ----------
 
+
+
 export async function sendChat({ messages, context }) {
-  if (!CHAT_ENDPOINT) {
-    return "The chat isn't connected to the server yet. Once your backend is ready, set CHAT_ENDPOINT in farmeApi.js and I'll answer here.";
+  const latestUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user")?.content;
+
+  if (!latestUserMessage) {
+    throw new Error("No user message provided.");
   }
 
-  const response = await fetch(
-    `${API_BASE_URL}${CHAT_ENDPOINT}`,
-    {
+  const controller = new AbortController();
+
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, 30000);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai/chat`, {
       method: "POST",
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ messages, context }),
+      body: JSON.stringify({
+        message: latestUserMessage,
+      }),
+      signal: controller.signal,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "Failed to get AI response.");
     }
-  );
 
-  if (!response.ok) {
-    throw new Error("bad response");
+    return data.response;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("The AI response took too long. Please try again.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return (await response.json()).reply;
 }
+
+
 
 // ---------- CROP LIBRARY ----------
 

@@ -24,7 +24,7 @@ from app.routers.waterings import router as waterings_router
 from app.routers.notifications import router as notifications_router
 from app.routers.crops import router as crops_router
 from app.routers.users import router as users_router
-
+from app.routers.ai import router as ai_router
 
 app = FastAPI(
     title="FarMe API",
@@ -51,6 +51,7 @@ app.include_router(waterings_router)
 app.include_router(notifications_router)
 app.include_router(crops_router)
 app.include_router(users_router)
+app.include_router(ai_router)
 
 
 Base.metadata.create_all(bind=engine)
