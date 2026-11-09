@@ -487,6 +487,14 @@
     padding: 0 0.7rem;
     font-size: 0.9rem;
   }
+    .fm-booktab:not(.is-active) .fm-booktab__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
   .fm-book__ribbon {
     right: 0.8rem;
     height: 2.4rem;
