@@ -4,8 +4,26 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.database import Base, engine
-from app.models.user import User
+from app.models import (
+    User,
+    Slot,
+    Plant,
+    Harvest,
+    Note,
+    Watering,
+    NotificationState,
+    Crop,
+    PasswordReset,
+)
 from app.routers.auth import router as auth_router
+from app.routers.slots import router as slots_router
+from app.routers.plants import router as plants_router
+from app.routers.harvests import router as harvests_router
+from app.routers.notes import router as notes_router
+from app.routers.waterings import router as waterings_router
+from app.routers.notifications import router as notifications_router
+from app.routers.crops import router as crops_router
+from app.routers.users import router as users_router
 
 
 app = FastAPI(
@@ -25,6 +43,15 @@ app.add_middleware(
 
 
 app.include_router(auth_router)
+app.include_router(slots_router)
+app.include_router(plants_router)
+app.include_router(harvests_router)
+app.include_router(notes_router)
+app.include_router(waterings_router)
+app.include_router(notifications_router)
+app.include_router(crops_router)
+app.include_router(users_router)
+
 
 Base.metadata.create_all(bind=engine)
 
