@@ -15,8 +15,29 @@ import {
   LayoutGrid,
   Leaf,
 } from "lucide-react";
-import { db, getUser, fetchWeather } from "../../services/farmeApi";
-import { Img, Sidebar, ChatHead, Modal, ConfirmModal, Select, DatePicker } from "../../components/shared";
+
+import {
+  getUser,
+  fetchWeather,
+  getSlots,
+  deletePlantAPI,
+  updateHarvestAPI,
+  deleteHarvestAPI,
+  createNoteAPI,
+  updateNoteAPI,
+  deleteNoteAPI,
+} from "../../services/farmeApi";
+
+import {
+  Img,
+  Sidebar,
+  ChatHead,
+  Modal,
+  ConfirmModal,
+  Select,
+  DatePicker,
+} from "../../components/shared";
+
 import { CROPS, cropByKey } from "../../data/crops";
 
 import "./library.css";
@@ -53,7 +74,7 @@ const daysBetween = (a, b) =>
   Math.round((new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`)) / 864e5);
 const niceDate = (s) =>
   new Date(`${s}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-const fmt = (n) => String(Number(n.toFixed(2)));
+const fmt = (value) => Number(value ?? 0).toFixed(1);
 const pctOf = (age, maturity) => Math.min(100, Math.max(0, Math.round((age / maturity) * 100)));
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // where a plant sits in its field, like "Row 2, column 3". notes keep a plant's id, so a removed plant says so.
@@ -1317,20 +1338,22 @@ export default function FarMeLibrary() {
   const [delPlants, setDelPlants] = useState(null); // { slotId, ids }: plants waiting for "remove?"
   const wide = useWide();
 
-  // same load / save pattern as the dashboard. notes live on the slot (slot.notes), so they save with it.
-  // todo(backend): POST /slots/:id/notes and DELETE /notes/:id
-  // todo(backend): loadSlots / saveSlots / getUser work the same as on the dashboard (see farmeApi.js). both pages save the whole list, so with two tabs open the last save wins.
+  // the library reads the same slots as the dashboard (GET /slots). each slot already comes with its plants, harvests and notes.
   useEffect(() => {
-    db.loadSlots().then((s) => {
-      setSlots(s);
-      setLoaded(true);
-    });
-    getUser().then(setUser);
-  }, []);
-  useEffect(() => {
-    if (loaded) db.saveSlots(slots);
-  }, [slots, loaded]);
+    const loadLibrary = async () => {
+      try {
+        setSlots(await getSlots());
+      } catch (error) {
+        console.error("Failed to load Library:", error);
+        alert("Unable to load your library. Please try again.");
+      } finally {
+        setLoaded(true);
+      }
+    };
 
+    loadLibrary();
+    getUser().then(setUser).catch(console.error);
+  }, []);
   // search matches crop names (local + english) and field names. the date filters and sorting come from the filter dialog.
   const q = query.trim().toLowerCase();
   const narrowed =
@@ -1371,35 +1394,73 @@ export default function FarMeLibrary() {
   const selPlant = selInfo && selected.plantId ? selInfo.plants.find((p) => p.id === selected.plantId) || null : null;
   const selNotes = selInfo ? (selSlot.notes || []).filter((n) => noteKeys(n).includes(selected.cropKey)) : [];
 
-  const addNote = ({ slotId, cropKeys, plantIds, text }) => {
-    setSlots((all) =>
-      all.map((s) =>
-        s.id === slotId
-          ? { ...s, notes: [{ id: crypto.randomUUID(), cropKeys, ...(plantIds ? { plantIds } : {}), date: todayIso(), text }, ...(s.notes || [])] }
-          : s,
-      ),
-    );
-    setShowNote(null);
+ const addNote = async ({ slotId, cropKeys, plantIds, text }) => {
+    try {
+      // POST /slots/:id/notes. the server sends back the saved note { id, cropKeys, plantIds, date, text }
+      const note = await createNoteAPI(slotId, {
+        cropKeys,
+        plantIds: plantIds || null,
+        date: todayIso(),
+        text,
+      });
+
+      setSlots((all) =>
+        all.map((s) => (s.id === slotId ? { ...s, notes: [note, ...(s.notes || [])] } : s)),
+      );
+
+      setShowNote(null);
+    } catch (error) {
+      alert(error.message || "Failed to save journal note.");
+    }
   };
-  const removeNote = () => {
-    setSlots((all) =>
-      all.map((s) => (s.id === delNote.slotId ? { ...s, notes: (s.notes || []).filter((n) => n.id !== delNote.id) } : s)),
-    );
-    setDelNote(null);
+
+  const removeNote = async () => {
+    try {
+      await deleteNoteAPI(delNote.id);
+
+      setSlots((all) =>
+        all.map((s) =>
+          s.id === delNote.slotId
+            ? {
+                ...s,
+                notes: (s.notes || []).filter((n) => n.id !== delNote.id),
+              }
+            : s,
+        ),
+      );
+
+      setDelNote(null);
+    } catch (error) {
+      alert(error.message || "Failed to delete journal note.");
+    }
   };
 
   // removing plants from the library. their notes and harvest history stay.
-  // todo(backend): DELETE /plants/:id for each one
-  const removePlants = () => {
+ const removePlants = async () => {
     const { slotId, ids } = delPlants;
     const slot = slots.find((s) => s.id === slotId);
-    const left = slot.plants.filter((p) => !ids.includes(p.id));
-    setSlots((all) => all.map((s) => (s.id === slotId ? { ...s, plants: left } : s)));
-    if (selected?.slotId === slotId) {
-      if (!left.some((p) => p.cropKey === selected.cropKey)) setSelected(null);
-      else if (selected.plantId && ids.includes(selected.plantId)) setSelected({ slotId, cropKey: selected.cropKey });
+
+    try {
+      await Promise.all(ids.map((id) => deletePlantAPI(id)));
+
+      const left = slot.plants.filter((p) => !ids.includes(p.id));
+
+      setSlots((all) =>
+        all.map((s) => (s.id === slotId ? { ...s, plants: left } : s)),
+      );
+
+      if (selected?.slotId === slotId) {
+        if (!left.some((p) => p.cropKey === selected.cropKey)) {
+          setSelected(null);
+        } else if (selected.plantId && ids.includes(selected.plantId)) {
+          setSelected({ slotId, cropKey: selected.cropKey });
+        }
+      }
+
+      setDelPlants(null);
+    } catch (error) {
+      alert(error.message || "Failed to delete plants.");
     }
-    setDelPlants(null);
   };
   const delSlot = delPlants ? slots.find((s) => s.id === delPlants.slotId) : null;
   const delList = delSlot ? delSlot.plants.filter((p) => delPlants.ids.includes(p.id)) : [];
@@ -1474,15 +1535,34 @@ export default function FarMeLibrary() {
   const editNote = editing?.kind === "note" ? editSlot?.notes?.find((n) => n.id === editing.id) : null;
   const editHarvestRaw = editing?.kind === "harvest" ? editSlot?.harvests?.find((h) => h.id === editing.id) : null;
   const editHarvest = editHarvestRaw && { ...editHarvestRaw, slotName: editSlot.name, crop: cropByKey(editHarvestRaw.cropKey) };
-  // todo(backend): PATCH /notes/:id and PATCH /harvests/:id
-  const applyEdit = () => {
+ const applyEdit = async () => {
     const { kind, slotId, id, patch } = pending;
-    const key = kind === "note" ? "notes" : "harvests";
-    setSlots((all) =>
-      all.map((s) => (s.id === slotId ? { ...s, [key]: (s[key] || []).map((x) => (x.id === id ? { ...x, ...patch } : x)) } : s)),
-    );
-    setPending(null);
-    setEditing(null);
+
+    try {
+      // PATCH /notes/:id or /harvests/:id. only the fields that changed are sent, and the server answers with the saved record
+      const saved =
+        kind === "note"
+          ? await updateNoteAPI(id, patch)
+          : await updateHarvestAPI(id, { ...patch, amount: patch.amount || "Not specified" });
+
+      const key = kind === "note" ? "notes" : "harvests";
+
+      setSlots((all) =>
+        all.map((s) =>
+          s.id === slotId
+            ? {
+                ...s,
+                [key]: (s[key] || []).map((x) => (x.id === id ? { ...x, ...saved } : x)),
+              }
+            : s,
+        ),
+      );
+
+      setPending(null);
+      setEditing(null);
+    } catch (error) {
+      alert(error.message || "Failed to update record.");
+    }
   };
 
   // ----- select mode (harvest history + journal)
@@ -1509,14 +1589,31 @@ export default function FarMeLibrary() {
       onDelete={() => setBulkDel(true)}
     />
   );
-  // todo(backend): DELETE /harvests/:id and DELETE /notes/:id for each one
-  const deletePicked = () => {
+  const deletePicked = async () => {
     const ids = new Set(pickedNow);
     const key = tab === "harvest" ? "harvests" : "notes";
-    setSlots((all) => all.map((s) => (s[key]?.some((x) => ids.has(x.id)) ? { ...s, [key]: s[key].filter((x) => !ids.has(x.id)) } : s)));
-    setPicked([]);
-    setSelecting(false);
-    setBulkDel(false);
+
+    try {
+      if (tab === "harvest") {
+        await Promise.all([...ids].map((id) => deleteHarvestAPI(id)));
+      } else {
+        await Promise.all([...ids].map((id) => deleteNoteAPI(id)));
+      }
+
+      setSlots((all) =>
+        all.map((s) =>
+          s[key]?.some((x) => ids.has(x.id))
+            ? { ...s, [key]: s[key].filter((x) => !ids.has(x.id)) }
+            : s,
+        ),
+      );
+
+      setPicked([]);
+      setSelecting(false);
+      setBulkDel(false);
+    } catch (error) {
+      alert(error.message || "Failed to delete selected records.");
+    }
   };
   // new note from the journal tab: starts on the open crop (in a field where it is planted)
   const startNote = () => {

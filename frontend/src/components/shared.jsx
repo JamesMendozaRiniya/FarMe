@@ -20,15 +20,19 @@ import { logout, sendChat } from "../services/farmeApi";
 import { useAvatarUri } from "./avatar";
 
 import sidebarLogo from "../assets/sidebar-logo.png";
+import sidebarHome from "../assets/sidebar-home.png";
 import sidebarDashboard from "../assets/sidebar-dashboard.png";
 import sidebarLibrary from "../assets/sidebar-library.png";
 import sidebarSettings from "../assets/sidebar-settings.png";
 import chatbot from "../assets/chatbot.png";
 
-// nav links. library and settings are their own pages, so these are real links.
+// nav links. every tab is its own page, so these are real links.
+//   home      -> Dashboard (home.jsx)      <Sidebar active="home" />
+//   dashboard -> Farm (dashboard.jsx)      <Sidebar active="dashboard" />  (key kept so dashboard.jsx and its onHome keep working)
 // change the hrefs to match our routes. with react-router, swap the <a href> for <NavLink to=...>.
 const NAV_LINKS = [
-  { key: "dashboard", label: "Dashboard", href: "/dashboard", img: sidebarDashboard },
+  { key: "home", label: "Dashboard", href: "/home", img: sidebarHome },
+  { key: "dashboard", label: "Farm", href: "/dashboard", img: sidebarDashboard },
   { key: "library", label: "Library", href: "/library", img: sidebarLibrary },
   { key: "settings", label: "Settings", href: "/settings", img: sidebarSettings },
 ];
@@ -432,7 +436,7 @@ const initials = (u) =>
   `${(u?.firstName || "")[0] || ""}${(u?.lastName || "")[0] || ""}`.toUpperCase() || "?";
 
 // todo(backend): `user` comes from getUser() (GET /me). avatar = { style, seed, background } from the register page, drawn in the browser. avatarUrl = a full image URL for the profile photo. Leave both out and the card shows initials.
-export function Sidebar({ active = "dashboard", user, onHome }) {
+export function Sidebar({ active = "home", user, onHome }) {
   const [collapsed, setCollapsed] = useState(() => {
     if (!isWide()) return true; // phones always start closed
     try {
