@@ -163,6 +163,7 @@ export default function Register() {
         username: values.username.trim().toLowerCase(), // lowercase, so "Juan" and "juan" are the same username
         email: values.email.trim().toLowerCase(),
         password: values.password, // never trimmed: spaces can be part of a password
+        confirmPassword: values.confirm,
         avatar,
       });
       setStatus("done");

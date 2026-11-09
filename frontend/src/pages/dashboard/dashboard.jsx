@@ -18,9 +18,21 @@ import {
 } from "lucide-react";
 import "./dashboard.css";
 import {
-  db,
   getUser,
+  getSlots,
+  createSlotAPI,
+  deleteSlotAPI,
+  updateSlotAPI,
+  createPlantAPI,
+  updatePlantAPI,
+  deletePlantAPI,
+  createHarvestAPI,
+  updateHarvestAPI,
+  deleteHarvestAPI,
   logWatering,
+  getNotificationStates,
+  markNotificationRead,
+  deleteNotificationAPI,
   geocode,
   searchPlaces,
   reverseGeocode,
@@ -1614,18 +1626,21 @@ export default function FarMeDashboard() {
   const [preview, setPreview] = useState(0);
   const [playing, setPlaying] = useState(false);
 
-  // load the slots once on start, then save them every time they change
-  // todo(backend): i save the whole list on every change. later, call the create / update / delete endpoints inside each action instead.
-  // todo(backend): when loadSlots is a real request it must throw on failure, not return []. otherwise a failed load gets saved back over the user's slots. show an error here instead.
   useEffect(() => {
-    db.loadSlots().then((s) => {
-      setSlots(s);
-      setLoaded(true);
-    });
+    async function loadDashboard() {
+      try {
+        const data = await getSlots();
+        setSlots(data);
+      } catch (error) {
+        console.error("Failed to load slots:", error);
+        alert("Unable to load your slots. Please try again.");
+      } finally {
+        setLoaded(true);
+      }
+    }
+
+    loadDashboard();
   }, []);
-  useEffect(() => {
-    if (loaded) db.saveSlots(slots);
-  }, [slots, loaded]);
 
   useEffect(() => {
     if (!playing) return;
@@ -1642,10 +1657,12 @@ export default function FarMeDashboard() {
   }, [playing]);
 
   // the signed-in user
-  // todo(backend): GET /me through getUser() in the api file. needs { username, firstName, lastName, role?, avatarUrl? }. username is the greeting.
+  // GET /auth/me through getUser() in the api file. username is the greeting.
   const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); // empty until getUser answers, so no placeholder name shows
   useEffect(() => {
-    getUser().then(setUser);
+    getUser()
+      .then(setUser)
+      .catch((error) => console.error("Failed to load the signed-in user:", error));
   }, []);
 
   // slot = the slot being viewed, flowSlot = the one in the add-slot modals
@@ -1710,14 +1727,25 @@ export default function FarMeDashboard() {
     return name;
   };
 
-  // step 1 -> step 2: save the new slot and show the success modal
-  // todo(backend): POST /slots
-  const createSlot = (data) => {
-    const id = crypto.randomUUID();
-    setSlots((all) => [...all, { id, ...data, name: uniqueName(data.name), plants: [] }]);
-    setShowAdd(false);
-    setFlow({ step: "success", id });
+  
+  const createSlot = async (data) => {
+    try {
+      const slotData = {
+        ...data,
+        name: uniqueName(data.name),
+      };
+
+      const savedSlot = await createSlotAPI(slotData);
+
+      setSlots((all) => [...all, savedSlot]);
+      setShowAdd(false);
+      setFlow({ step: "success", id: savedSlot.id });
+    } catch (error) {
+      console.error("Failed to create slot:", error);
+      alert(error.message || "Unable to create slot. Please try again.");
+    }
   };
+
 
   // open a slot's grid and reset the selection + growth preview
   const openSlot = (id) => {
@@ -1741,22 +1769,33 @@ export default function FarMeDashboard() {
     setFlow(null);
   };
 
-  // click / enter on a square. with the trowel: pick up, move or harvest. otherwise plant the crop i picked if it's empty, or just select it.
-  // todo(backend): POST /slots/:id/plants
-  const activateCell = (cell) => {
+  const activateCell = async (cell) => {
     setSelected(cell);
+
     if (!slot) return;
+
     const here = plantMap.get(`${cell.row}-${cell.col}`);
+
     if (tool === "trowel") return trowelClick(cell, here);
     if (!brush || here) return;
+
+    try {
+      const newPlant = await createPlantAPI(slot.id, {
+        row: cell.row,
+        col: cell.col,
+        cropKey: brush,
+        plantedOn,
+    });
+
     updateSlot(slot.id, (s) => ({
       ...s,
-      plants: [
-        ...s.plants,
-        { id: crypto.randomUUID(), row: cell.row, col: cell.col, cropKey: brush, plantedOn },
-      ],
+      plants: [...s.plants, newPlant],
     }));
-  };
+  } catch (error) {
+    console.error("Failed to plant crop:", error);
+    alert(error.message || "Unable to plant crop. Please try again.");
+  }
+};
 
   // the trowel works like a gallery: click plants to select or unselect them, as many as you like.
   // then move them together, harvest the ready ones, or throw them away (buttons in the side panel)
@@ -1768,40 +1807,74 @@ export default function FarMeDashboard() {
     );
     setToolMsg("");
   };
-  // put the plants on the trowel down. the first one (top left) lands on the square i click and the rest keep their layout around it
-  // todo(backend): PATCH /plants/:id { row, col } for every plant that moved
-  const placeGroup = (cell) => {
-    const group = [...carryPlants].sort((a, b) => a.row - b.row || a.col - b.col);
+
+  const placeGroup = async (cell) => {
+    const group = [...carryPlants].sort(
+      (a, b) => a.row - b.row || a.col - b.col
+    );
+
+    if (!group.length) return;
+
     const dr = cell.row - group[0].row;
     const dc = cell.col - group[0].col;
+
     if (dr === 0 && dc === 0) {
-      setCarry([]); // clicked the square it came from: put back
+      setCarry([]);
       return setToolMsg("Put back where they were.");
     }
+
     const ids = new Set(group.map((p) => p.id));
+
     const fits = group.every((p) => {
       const r = p.row + dr;
       const c = p.col + dc;
-      if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) return false; // outside the plot
+
+      if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) {
+        return false;
+      }
+
       const other = plantMap.get(`${r}-${c}`);
-      return !other || ids.has(other.id); // empty, or a square one of them is leaving
+      return !other || ids.has(other.id);
     });
+
     if (!fits) {
       return setToolMsg(
-        "They don't fit there. Some squares are taken or outside the plot, so try another spot.",
+        "They don't fit there. Some squares are taken or outside the plot, so try another spot."
       );
     }
-    updateSlot(slot.id, (s) => ({
-      ...s,
-      plants: s.plants.map((p) => (ids.has(p.id) ? { ...p, row: p.row + dr, col: p.col + dc } : p)),
-    }));
-    setCarry([]);
-    setToolMsg(
-      group.length === 1
-        ? `Moved ${cropByKey(group[0].cropKey).name}.`
-        : `Moved ${group.length} plants together.`,
-    );
+
+    try {
+      await Promise.all(
+        group.map((p) =>
+          updatePlantAPI(p.id, {
+            row: p.row + dr,
+            col: p.col + dc,
+          })
+        )
+      );
+
+      updateSlot(slot.id, (s) => ({
+        ...s,
+        plants: s.plants.map((p) =>
+          ids.has(p.id)
+            ? { ...p, row: p.row + dr, col: p.col + dc }
+            : p
+        ),
+      }));
+
+      setCarry([]);
+
+      setToolMsg(
+        group.length === 1
+          ? `Moved ${cropByKey(group[0].cropKey).name}.`
+          : `Moved ${group.length} plants together.`
+      );
+    } catch (error) {
+      console.error("Failed to move plants:", error);
+      alert(error.message || "Unable to move plants. Please try again.");
+    }
   };
+  
   // drag-select: a plain drag starts a new selection with the plants inside the box (an empty box clears it).
   // holding shift / ctrl / cmd adds the plants to the selection i already have.
   const selectBox = (a, b, add) => {
@@ -1827,54 +1900,116 @@ export default function FarMeDashboard() {
     setToolMsg("");
   };
 
-  // todo(backend): DELETE /plants/:id for each one
-  const removePlants = (ids) => {
-    updateSlot(slot.id, (s) => ({ ...s, plants: s.plants.filter((p) => !ids.includes(p.id)) }));
-    setCarry((c) => c.filter((id) => !ids.includes(id)));
-    setPicked((c) => c.filter((id) => !ids.includes(id)));
+  const removePlants = async (ids) => {
+    try {
+      await Promise.all(ids.map((id) => deletePlantAPI(id)));
+
+      updateSlot(slot.id, (s) => ({
+        ...s,
+        plants: s.plants.filter((p) => !ids.includes(p.id)),
+      }));
+
+      setCarry((c) => c.filter((id) => !ids.includes(id)));
+      setPicked((c) => c.filter((id) => !ids.includes(id)));
+    } catch (error) {
+     console.error("Failed to remove plants:", error);
+      alert(error.message || "Unable to remove plants. Please try again.");
+    }
   };
-  // the harvest dialog: keep = log the harvest and the plants grow again (planting date becomes today), remove = log it and free the squares
-  // todo(backend): POST /slots/:id/harvests { plantId, at, amount, kept } for each plant, then PATCH or DELETE it
-  const harvestPlants = ({ action, amount }) => {
+
+  const harvestPlants = async ({ action, amount }) => {
     const group = slot.plants.filter((x) => harvesting.includes(x.id));
-    setHarvesting(null);
-    if (!group.length) return;
+
+    if (!group.length) {
+      setHarvesting(null);
+      return;
+    }
+
     const keep = action === "keep";
     const date = todayIso();
     const ids = new Set(group.map((p) => p.id));
-    updateSlot(slot.id, (s) => ({
-      ...s,
-      harvests: [
-        ...group.map((p) => ({
-          id: crypto.randomUUID(),
-          cropKey: p.cropKey,
-          row: p.row,
-          col: p.col,
-          plantedOn: p.plantedOn,
-          date,
-          amount,
-          kept: keep,
-        })),
-        ...(s.harvests || []),
-      ],
-      plants: keep
-        ? s.plants.map((x) => (ids.has(x.id) ? { ...x, plantedOn: date, lastHarvested: date } : x))
-        : s.plants.filter((x) => !ids.has(x.id)),
-    }));
-    setPicked((c) => c.filter((id) => !ids.has(id)));
-    const what = group.length === 1 ? cropByKey(group[0].cropKey).name : `${group.length} plants`;
-    setToolMsg(
-      keep
-        ? `Harvested ${what}. ${group.length === 1 ? "It starts" : "They start"} growing again.`
-        : `Harvested ${what}. The ${group.length === 1 ? "square is" : "squares are"} free.`,
-    );
+
+    try {
+
+      const newHarvests = await Promise.all(
+        group.map((p) =>
+          createHarvestAPI(slot.id, {
+            cropKey: p.cropKey,
+            row: p.row,
+            col: p.col,
+            plantedOn: p.plantedOn,
+            date,
+            amount: amount?.trim() || "Not specified",
+            kept: keep,
+          })
+        )
+      );
+
+      if (keep) {
+        await Promise.all(
+          group.map((p) =>
+            updatePlantAPI(p.id, {
+              plantedOn: date,
+              lastHarvested: date,
+            })
+          )
+        );
+      } else {
+        await Promise.all(group.map((p) => deletePlantAPI(p.id)));
+      }
+
+      updateSlot(slot.id, (s) => ({
+        ...s,
+        harvests: [...newHarvests, ...(s.harvests || [])],
+        plants: keep
+          ? s.plants.map((x) =>
+              ids.has(x.id)
+                ? { ...x, plantedOn: date, lastHarvested: date }
+                : x
+            )
+          : s.plants.filter((x) => !ids.has(x.id)),
+      }));
+
+      setPicked((c) => c.filter((id) => !ids.has(id)));
+      setHarvesting(null);
+
+      const what =
+        group.length === 1
+          ? cropByKey(group[0].cropKey).name
+          : `${group.length} plants`;
+
+      setToolMsg(
+        keep
+          ? `Harvested ${what}. ${
+              group.length === 1 ? "It starts" : "They start"
+            } growing again.`
+          : `Harvested ${what}. The ${
+              group.length === 1 ? "square is" : "squares are"
+            } free.`
+      );
+    } catch (error) {
+      console.error("Failed to harvest plants:", error);
+      alert(error.message || "Unable to harvest plants. Please try again.");
+    }
   };
 
-  // todo(backend): DELETE /slots/:id
-  const doDelete = () => {
-    setSlots((all) => all.filter((s) => s.id !== toDelete.id));
-    if (openId === toDelete.id) setOpenId(null);
-    setToDelete(null);
+  const doDelete = async () => {
+    if (!toDelete) return;
+
+    try {
+      await deleteSlotAPI(toDelete.id);
+
+      setSlots((all) => all.filter((s) => s.id !== toDelete.id));
+
+      if (openId === toDelete.id) {
+        setOpenId(null);
+      }
+
+      setToDelete(null);
+    } catch (error) {
+      console.error("Failed to delete slot:", error);
+      alert(error.message || "Unable to delete slot. Please try again.");
+    }
   };
 
   const counts = slot
@@ -1888,19 +2023,15 @@ export default function FarMeDashboard() {
     const t = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(t);
   }, []);
-  // read / deleted marks, loaded and saved through the api file
-  // todo(backend): keep these marks per user (see db.loadNotifState in farmeApi.js)
+  // read / deleted marks are saved per user on the server (GET / PATCH / DELETE /notifications)
   const [nstate, setNstate] = useState({ read: {}, deleted: {} });
   const [nLoaded, setNLoaded] = useState(false);
   useEffect(() => {
-    db.loadNotifState().then((st) => {
-      setNstate(st);
-      setNLoaded(true);
-    });
+    getNotificationStates()
+      .then(setNstate)
+      .catch((error) => console.error("Failed to load notification marks:", error))
+      .finally(() => setNLoaded(true));
   }, []);
-  useEffect(() => {
-    if (nLoaded) db.saveNotifState(nstate);
-  }, [nstate, nLoaded]);
   const allNotifs = useMemo(() => buildNotifications(slots, now), [slots, now]);
   // drop the marks of notifications that no longer exist, so the saved list doesn't grow forever
   useEffect(() => {
@@ -1919,26 +2050,55 @@ export default function FarMeDashboard() {
   const notifs = allNotifs
     .filter((n) => !nstate.deleted[n.id])
     .map((n) => ({ ...n, read: !!nstate.read[n.id] }));
-  // todo(backend): read / delete should also call the notifications api (PATCH / DELETE /notifications/:id)
-  const markRead = (id) => setNstate((st) => ({ ...st, read: { ...st.read, [id]: true } }));
-  const markAllRead = () =>
+  // every action changes the screen first, then tells the server. if the server refuses, the marks are reloaded from it.
+  const saveMarks = (requests) =>
+    Promise.all(requests).catch((error) => {
+      console.error("Failed to save the notification change:", error);
+      getNotificationStates().then(setNstate).catch(() => {});
+    });
+  const markRead = (id) => {
+    setNstate((st) => ({ ...st, read: { ...st.read, [id]: true } }));
+    saveMarks([markNotificationRead(id)]);
+  };
+  const markAllRead = () => {
+    const ids = notifs.filter((n) => !n.read).map((n) => n.id);
+    if (!ids.length) return;
     setNstate((st) => ({
       ...st,
-      read: { ...st.read, ...Object.fromEntries(notifs.map((n) => [n.id, true])) },
+      read: { ...st.read, ...Object.fromEntries(ids.map((id) => [id, true])) },
     }));
-  const deleteNotif = (id) =>
+    saveMarks(ids.map((id) => markNotificationRead(id)));
+  };
+  const deleteNotif = (id) => {
     setNstate((st) => ({ ...st, deleted: { ...st.deleted, [id]: true } }));
-  const deleteAllNotifs = () =>
+    saveMarks([deleteNotificationAPI(id)]);
+  };
+  const deleteAllNotifs = () => {
+    const ids = notifs.map((n) => n.id);
+    if (!ids.length) return;
     setNstate((st) => ({
       ...st,
-      deleted: { ...st.deleted, ...Object.fromEntries(notifs.map((n) => [n.id, true])) },
+      deleted: { ...st.deleted, ...Object.fromEntries(ids.map((id) => [id, true])) },
     }));
-  // "water plants": remember when this slot was last watered (saved with the slot)
-  // todo(backend): PATCH /slots/:id { lastWatered } and POST /slots/:id/waterings (logWatering is the placeholder)
-  const waterSlot = () => {
+    saveMarks(ids.map((id) => deleteNotificationAPI(id)));
+  };
+    
+  const waterSlot = async () => {
+    if (!slot?.id) return;
+
     const at = Date.now();
-    updateSlot(slot.id, (s) => ({ ...s, lastWatered: at }));
-    logWatering(slot.id, at);
+
+    try {
+      await logWatering(slot.id, at);
+
+      updateSlot(slot.id, (s) => ({
+        ...s,
+        lastWatered: at,
+      }));
+    } catch (error) {
+      console.error("Failed to record watering:", error);
+      alert(error.message || "Unable to record watering. Please try again.");
+    }
   };
 
   // edit slot: the form hands over the new values, i list what changed and ask before saving
@@ -1975,18 +2135,55 @@ export default function FarMeDashboard() {
       );
     setPendingEdit({ data: next, changes, warn: lost > 0 });
   };
-  // todo(backend): PATCH /slots/:id, and delete the plants that fell outside the new size
-  const applyEdit = () => {
+  
+  const applyEdit = async () => {
+    if (!pendingEdit || !slot) return;
+
     const { data } = pendingEdit;
     const g = computeGrid(data.widthM, data.lengthM);
-    updateSlot(slot.id, (s) => ({
-      ...s,
-      ...data,
-      plants: s.plants.filter((p) => p.row < g.rows && p.col < g.cols),
-    }));
-    setSelected(null);
-    setPendingEdit(null);
-    setShowEdit(false);
+
+    const removedPlants = slot.plants.filter(
+      (p) => p.row >= g.rows || p.col >= g.cols
+    );
+
+    const updates = {
+      name: data.name,
+      soil: data.soil,
+      widthM: data.widthM,
+      lengthM: data.lengthM,
+      location: data.location,
+      ...(data.lat != null ? { lat: data.lat } : {}),
+      ...(data.lon != null ? { lon: data.lon } : {}),
+      ...(data.place != null ? { place: data.place } : {}),
+    };
+
+    try {
+      await updateSlotAPI(slot.id, updates);
+
+      await Promise.all(
+        removedPlants.map((plant) => deletePlantAPI(plant.id))
+      );
+
+      const refreshedSlots = await getSlots();
+      setSlots(refreshedSlots);
+
+      setSelected(null);
+      setPendingEdit(null);
+      setShowEdit(false);
+
+      alert("Farm slot updated successfully!");
+    } catch (error) {
+      console.error("Failed to update slot:", error);
+
+      try {
+        const refreshedSlots = await getSlots();
+        setSlots(refreshedSlots);
+      } catch (refreshError) {
+        console.error("Failed to refresh slots:", refreshError);
+      }
+
+      alert(error.message || "Unable to update slot. Please try again.");
+    }
   };
 
   // deleting a plant or notification(s) always asks first (see confirmInfo + runConfirm)

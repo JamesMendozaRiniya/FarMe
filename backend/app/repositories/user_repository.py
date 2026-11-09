@@ -45,3 +45,26 @@ def create_user(db: Session, user_data: dict):
     except Exception:
         db.rollback()
         raise
+def update_user_profile(db: Session, user, update_data: dict):
+    try:
+        for key, value in update_data.items():
+            setattr(user, key, value)
+
+        db.commit()
+        db.refresh(user)
+
+        return user
+
+    except Exception:
+        db.rollback()
+        raise
+
+
+def delete_user(db: Session, user):
+    try:
+        db.delete(user)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise

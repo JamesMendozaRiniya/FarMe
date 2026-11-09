@@ -9,10 +9,13 @@ from app.core.security import (
 )
 from app.db.database import get_db
 from app.schemas.auth import (
+    ForgotPasswordRequest,
     LoginRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     UserResponse
 )
+from app.services import auth_service
 from app.services.auth_service import (
     authenticate_user,
     register_user
@@ -103,4 +106,36 @@ def logout(response: Response):
 
     return {
         "message": "Successfully logged out."
+    }
+@router.post("/forgot-password")
+def forgot_password(
+    data: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    auth_service.request_password_reset(db, data.email)
+
+    return {
+        "message": "If an account with that email exists, a password reset link has been sent."
+    }
+
+
+@router.post("/reset-password")
+def reset_password(
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    success = auth_service.reset_user_password(
+        db,
+        data.token,
+        data.new_password
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset link."
+        )
+
+    return {
+        "message": "Your password has been successfully reset."
     }

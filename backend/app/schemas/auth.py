@@ -123,3 +123,26 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     avatar: AvatarSchema | None = None
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value):
+        return str(value).strip().lower()
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=255)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value):
+        if not re.search(r"[A-Za-z]", value):
+            raise ValueError("Password must contain at least one letter.")
+
+        if not re.search(r"\d", value):
+            raise ValueError("Password must contain at least one number.")
+
+        return value
