@@ -554,6 +554,16 @@
   border-radius: 1rem;
   box-shadow: 4px 4px 0 var(--pine);
 }
+.fm-chat-panel--expanded {
+  top: 2vh !important;
+  right: 2vw !important;
+  bottom: 2vh !important;
+  left: 2vw !important;
+  width: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  border-radius: 1rem;
+}
 .fm-chat-head {
   display: flex;
   align-items: center;
