@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+<<<<<<< HEAD
+=======
+import FarMeHome from "./pages/home/home";
+>>>>>>> origin/Dani
 import FarMeDashboard from "./pages/dashboard/dashboard";
 import FarMeLibrary from "./pages/library/library";
 import Register from "./pages/register/register";
@@ -53,6 +57,14 @@ export default function App() {
   if (path.startsWith("/forgot-password")) return <ForgotPassword />;
   if (path.startsWith("/reset-password")) return <ResetPassword />;
 
+  if (path.startsWith("/home")) {
+    return (
+      <ProtectedPage>
+        <FarMeHome />
+      </ProtectedPage>
+    );
+  }
+
   if (path.startsWith("/library")) {
     return (
       <ProtectedPage>
@@ -74,4 +86,8 @@ export default function App() {
       <FarMeDashboard />
     </ProtectedPage>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/Dani
