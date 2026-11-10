@@ -2,6 +2,7 @@
 // how to use them on any page:
 //   <Sidebar active="library" user={user} />
 //   <ChatHead context={{ page: "library" }} />
+import ReactMarkdown from "react-markdown";
 import { useState, useEffect, useRef } from "react";
 import {
   Menu,
@@ -14,6 +15,8 @@ import {
   Check,
   LogOut,
   X,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import "./shared.css";
 import { logout, sendChat } from "../services/farmeApi";
@@ -626,7 +629,11 @@ const clampPos = (p) => ({
   bottom: Math.min(Math.max(8, p.bottom), window.innerHeight - BUBBLE - 8),
 });
 
-const SUGGESTIONS = ["What should I plant now?", "How often should I water?"];
+const SUGGESTIONS = [
+  "What should I plant now?",
+  "How often should I water?",
+  "Will the weather affect my crops?",
+];
 
 export function ChatHead({ context }) {
   // restore what i saved on the last page
@@ -639,6 +646,7 @@ export function ChatHead({ context }) {
     }
   });
   const [open, setOpen] = useState(!!saved.open);
+  const [expanded, setExpanded] = useState(false);
   const [messages, setMessages] = useState(saved.messages || []);
   const [askClear, setAskClear] = useState(false);
   const [pos, setPos] = useState(saved.pos || { right: 16, bottom: 16 }); // distance from the window's right / bottom edge
@@ -736,26 +744,50 @@ export function ChatHead({ context }) {
 
   // desktop window: opens above the bubble, or below it when the bubble is in the top half of the screen
   const upper = pos.bottom > window.innerHeight / 2;
-  const panelStyle = {
-    right: Math.max(8, Math.min(pos.right, window.innerWidth - 360 - 8)),
-    ...(upper
-      ? {
-          top: window.innerHeight - pos.bottom + 8,
-          maxHeight: `calc(100vh - ${window.innerHeight - pos.bottom + 16}px)`,
-        }
-      : {
-          bottom: pos.bottom + BUBBLE + 8,
-          maxHeight: `calc(100vh - ${pos.bottom + BUBBLE + 16}px)`,
-        }),
-  };
+  const panelStyle = expanded
+    ? {
+        top: "2vh",
+        right: "2vw",
+        bottom: "2vh",
+        left: "2vw",
+        width: "auto",
+        height: "auto",
+        maxHeight: "none",
+      }
+    : {
+        right: Math.max(8, Math.min(pos.right, window.innerWidth - 360 - 8)),
+        ...(upper
+          ? {
+              top: window.innerHeight - pos.bottom + 8,
+              maxHeight: `calc(100vh - ${window.innerHeight - pos.bottom + 16}px)`,
+            }
+          : {
+              bottom: pos.bottom + BUBBLE + 8,
+              maxHeight: `calc(100vh - ${pos.bottom + BUBBLE + 16}px)`,
+            }),
+      };
 
   return (
     <>
       {open && (
-        <section className="fm-chat-panel" role="dialog" aria-label="FarMe chat" style={panelStyle}>
+        <section
+          className="fm-chat-panel"
+          role="dialog"
+          aria-label="FarMe chat"
+          style={panelStyle}
+        >
           <header className="fm-chat-head">
             <strong className="font-display text-lg">Sprout</strong>
             <span className="flex gap-2">
+              <button
+                type="button"
+                className="fm-btn fm-btn--light !px-0 w-11 flex items-center justify-center"
+                onClick={() => setExpanded((value) => !value)}
+                aria-label={expanded ? "Restore chat size" : "Expand chat"}
+                title={expanded ? "Restore" : "Expand"}
+              >
+                {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              </button>
               {messages.length > 0 && (
                 <button
                   type="button"
@@ -792,9 +824,16 @@ export function ChatHead({ context }) {
               </>
             )}
             {messages.map((m) => (
-              <p key={m.id} className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}>
-                {m.text}
-              </p>
+              <div
+                key={m.id}
+                className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}
+              >
+                {m.role === "assistant" ? (
+                  <ReactMarkdown>{m.text}</ReactMarkdown>
+                ) : (
+                  m.text
+                )}
+              </div>
             ))}
             {busy && <p className="fm-msg fm-msg--bot">Typing…</p>}
             <div ref={endRef} />
