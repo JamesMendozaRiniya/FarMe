@@ -461,14 +461,16 @@ const WMO = (code) =>
 
 export async function fetchWeather(lat, lon) {
   const response = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code`
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&forecast_days=3&timezone=auto`
   );
 
   if (!response.ok) {
     throw new Error(`weather failed (${response.status})`);
   }
 
-  const current = (await response.json()).current;
+  const data = await response.json();
+  const current = data.current;
+  const daily = data.daily;
 
   if (!current) {
     throw new Error("weather response had no data");
@@ -481,6 +483,22 @@ export async function fetchWeather(lat, lon) {
     humidity: current.relative_humidity_2m,
     label,
     emoji,
+
+    forecast: (daily?.time || []).map((date, index) => {
+      const [forecastLabel, forecastEmoji] = WMO(
+        daily.weather_code[index]
+      );
+
+      return {
+        date,
+        label: forecastLabel,
+        emoji: forecastEmoji,
+        maxTemp: Math.round(daily.temperature_2m_max[index]),
+        minTemp: Math.round(daily.temperature_2m_min[index]),
+        rainChance: daily.precipitation_probability_max[index],
+        rainAmount: daily.precipitation_sum[index],
+      };
+    }),
   };
 }
 
@@ -540,6 +558,7 @@ export async function sendChat({ messages, context }) {
       },
       body: JSON.stringify({
         message: latestUserMessage,
+        context: context || {},
       }),
       signal: controller.signal,
     });
