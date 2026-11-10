@@ -461,14 +461,16 @@ const WMO = (code) =>
 
 export async function fetchWeather(lat, lon) {
   const response = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code`
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&forecast_days=3&timezone=auto`
   );
 
   if (!response.ok) {
     throw new Error(`weather failed (${response.status})`);
   }
 
-  const current = (await response.json()).current;
+  const data = await response.json();
+  const current = data.current;
+  const daily = data.daily;
 
   if (!current) {
     throw new Error("weather response had no data");
@@ -481,6 +483,22 @@ export async function fetchWeather(lat, lon) {
     humidity: current.relative_humidity_2m,
     label,
     emoji,
+
+    forecast: (daily?.time || []).map((date, index) => {
+      const [forecastLabel, forecastEmoji] = WMO(
+        daily.weather_code[index]
+      );
+
+      return {
+        date,
+        label: forecastLabel,
+        emoji: forecastEmoji,
+        maxTemp: Math.round(daily.temperature_2m_max[index]),
+        minTemp: Math.round(daily.temperature_2m_min[index]),
+        rainChance: daily.precipitation_probability_max[index],
+        rainAmount: daily.precipitation_sum[index],
+      };
+    }),
   };
 }
 
@@ -514,29 +532,56 @@ export async function fetchRecommendations(ctx) {
 
 // ---------- AI: CHATBOT ----------
 
+
+
 export async function sendChat({ messages, context }) {
-  if (!CHAT_ENDPOINT) {
-    return "The chat isn't connected to the server yet. Once your backend is ready, set CHAT_ENDPOINT in farmeApi.js and I'll answer here.";
+  const latestUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user")?.content;
+
+  if (!latestUserMessage) {
+    throw new Error("No user message provided.");
   }
 
-  const response = await fetch(
-    `${API_BASE_URL}${CHAT_ENDPOINT}`,
-    {
+  const controller = new AbortController();
+
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, 30000);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai/chat`, {
       method: "POST",
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ messages, context }),
+      body: JSON.stringify({
+        message: latestUserMessage,
+        context: context || {},
+      }),
+      signal: controller.signal,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "Failed to get AI response.");
     }
-  );
 
-  if (!response.ok) {
-    throw new Error("bad response");
+    return data.response;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("The AI response took too long. Please try again.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return (await response.json()).reply;
 }
+
+
 
 // ---------- CROP LIBRARY ----------
 

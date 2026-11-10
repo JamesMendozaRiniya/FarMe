@@ -20,15 +20,19 @@ import { logout, sendChat } from "../services/farmeApi";
 import { useAvatarUri } from "./avatar";
 
 import sidebarLogo from "../assets/sidebar-logo.png";
+import sidebarHome from "../assets/sidebar-home.png";
 import sidebarDashboard from "../assets/sidebar-dashboard.png";
 import sidebarLibrary from "../assets/sidebar-library.png";
 import sidebarSettings from "../assets/sidebar-settings.png";
 import chatbot from "../assets/chatbot.png";
 
-// nav links. library and settings are their own pages, so these are real links.
+// nav links. every tab is its own page, so these are real links.
+//   home      -> Dashboard (home.jsx)      <Sidebar active="home" />
+//   dashboard -> Farm (dashboard.jsx)      <Sidebar active="dashboard" />  (key kept so dashboard.jsx and its onHome keep working)
 // change the hrefs to match our routes. with react-router, swap the <a href> for <NavLink to=...>.
 const NAV_LINKS = [
-  { key: "dashboard", label: "Dashboard", href: "/dashboard", img: sidebarDashboard },
+  { key: "home", label: "Dashboard", href: "/home", img: sidebarHome },
+  { key: "dashboard", label: "Farm", href: "/dashboard", img: sidebarDashboard },
   { key: "library", label: "Library", href: "/library", img: sidebarLibrary },
   { key: "settings", label: "Settings", href: "/settings", img: sidebarSettings },
 ];
@@ -432,7 +436,7 @@ const initials = (u) =>
   `${(u?.firstName || "")[0] || ""}${(u?.lastName || "")[0] || ""}`.toUpperCase() || "?";
 
 // todo(backend): `user` comes from getUser() (GET /me). avatar = { style, seed, background } from the register page, drawn in the browser. avatarUrl = a full image URL for the profile photo. Leave both out and the card shows initials.
-export function Sidebar({ active = "dashboard", user, onHome }) {
+export function Sidebar({ active = "home", user, onHome }) {
   const [collapsed, setCollapsed] = useState(() => {
     if (!isWide()) return true; // phones always start closed
     try {
@@ -503,9 +507,16 @@ export function Sidebar({ active = "dashboard", user, onHome }) {
                   aria-label={l.label}
                   aria-current={active === l.key ? "page" : undefined}
                   onClick={(e) => {
+                    e.preventDefault();
+
                     if (active === "dashboard" && l.key === "dashboard" && onHome) {
-                      e.preventDefault(); // already here: just go back to the slot list, no reload
                       onHome();
+                      return;
+                    }
+
+                    if (window.location.pathname !== l.href) {
+                      window.history.pushState({}, "", l.href);
+                      window.dispatchEvent(new PopStateEvent("popstate"));
                     }
                   }}
                   className={`fm-nav__link${active === l.key ? " fm-nav__link--active" : ""}`}
@@ -743,7 +754,7 @@ export function ChatHead({ context }) {
       {open && (
         <section className="fm-chat-panel" role="dialog" aria-label="FarMe chat" style={panelStyle}>
           <header className="fm-chat-head">
-            <strong className="font-display text-lg">FarMe helper</strong>
+            <strong className="font-display text-lg">Sprout</strong>
             <span className="flex gap-2">
               {messages.length > 0 && (
                 <button

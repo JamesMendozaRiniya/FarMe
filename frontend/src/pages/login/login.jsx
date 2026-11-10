@@ -13,7 +13,7 @@ import Sprout from "../../components/sprout";
 import { login } from "../../services/farmeApi"; // the call to the server (todo(backend) notes are there)
 import PageFade from "../../components/page-fade"; // fades between the register / login / forgot / reset pages
 
-const AFTER_LOGIN_HREF = "/dashboard"; // change to our dashboard route
+const AFTER_LOGIN_HREF = "/home";
 const REGISTER_HREF = "/register";
 const FORGOT_HREF = "/forgot-password"; // change to our reset-password route
 
@@ -83,7 +83,8 @@ export default function Login() {
         password: values.password, // never trimmed: spaces can be part of a password
         remember: values.remember,
       });
-      window.location.assign(AFTER_LOGIN_HREF);
+      window.history.pushState({}, "", AFTER_LOGIN_HREF);
+      window.dispatchEvent(new PopStateEvent("popstate"));
     } catch (err) {
       setStatus("idle");
       fail();

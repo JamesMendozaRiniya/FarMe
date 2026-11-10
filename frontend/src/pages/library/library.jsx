@@ -1674,7 +1674,7 @@ export default function FarMeLibrary() {
                 onClick={() => goTab(k)}
                 className={`fm-booktab${tab === k ? " is-active" : ""}`}
               >
-                <Icon size={16} aria-hidden="true" /> {label}
+                <Icon size={16} aria-hidden="true" /> <span className="fm-booktab__label">{label}</span>
               </button>
             ))}
           </div>

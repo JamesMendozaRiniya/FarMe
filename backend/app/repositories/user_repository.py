@@ -1,7 +1,6 @@
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
 from app.models.user import User
 
 
@@ -62,6 +61,76 @@ def update_user_profile(db: Session, user, update_data: dict):
 
 def delete_user(db: Session, user):
     try:
+        user_id = user.id
+
+        db.execute(text("""
+            DELETE FROM field_harvests
+            WHERE field_id IN (
+                SELECT id FROM fields WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM planted_crops
+            WHERE field_id IN (
+                SELECT id FROM fields WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM journal_notes
+            WHERE user_id = :user_id
+               OR field_id IN (
+                   SELECT id FROM fields WHERE user_id = :user_id
+               )
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM fields WHERE user_id = :user_id
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM notes
+            WHERE slot_id IN (
+                SELECT id FROM slots WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM waterings
+            WHERE slot_id IN (
+                SELECT id FROM slots WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM harvests
+            WHERE slot_id IN (
+                SELECT id FROM slots WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM plants
+            WHERE slot_id IN (
+                SELECT id FROM slots WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM slots WHERE user_id = :user_id
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM notification_states
+            WHERE user_id = :user_id
+        """), {"user_id": user_id})
+
+        db.execute(text("""
+            DELETE FROM password_resets
+            WHERE user_id = :user_id
+        """), {"user_id": user_id})
+
         db.delete(user)
         db.commit()
 
