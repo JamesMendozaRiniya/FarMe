@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-<<<<<<< HEAD
-=======
 import FarMeHome from "./pages/home/home";
->>>>>>> origin/Dani
 import FarMeDashboard from "./pages/dashboard/dashboard";
 import FarMeLibrary from "./pages/library/library";
 import Register from "./pages/register/register";
@@ -86,8 +83,4 @@ export default function App() {
       <FarMeDashboard />
     </ProtectedPage>
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/Dani
