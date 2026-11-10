@@ -829,7 +829,21 @@ export function ChatHead({ context }) {
                 className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}
               >
                 {m.role === "assistant" ? (
-                  <ReactMarkdown>{m.text}</ReactMarkdown>
+                  <ReactMarkdown
+                    components={{
+                      ul: ({ children }) => (
+                        <ul className="fm-chat-list">{children}</ul>
+                      ),
+                      ol: ({ children }) => (
+                        <ol className="fm-chat-list fm-chat-list--ordered">{children}</ol>
+                      ),
+                      li: ({ children }) => (
+                        <li>{children}</li>
+                      ),
+                    }}
+                  >
+                    {m.text}
+                  </ReactMarkdown>
                 ) : (
                   m.text
                 )}
