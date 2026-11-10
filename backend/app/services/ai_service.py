@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.core.ai_prompt import SYSTEM_PROMPT, FEW_SHOT_EXAMPLES
 
 
-MODEL_NAME = "gemini-3.5-flash-lite"
+MODEL_NAME = settings.GEMINI_MODEL
 
 
 async def generate_ai_response(user_message: str) -> str:

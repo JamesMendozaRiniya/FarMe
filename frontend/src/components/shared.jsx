@@ -507,9 +507,16 @@ export function Sidebar({ active = "home", user, onHome }) {
                   aria-label={l.label}
                   aria-current={active === l.key ? "page" : undefined}
                   onClick={(e) => {
+                    e.preventDefault();
+
                     if (active === "dashboard" && l.key === "dashboard" && onHome) {
-                      e.preventDefault(); // already here: just go back to the slot list, no reload
                       onHome();
+                      return;
+                    }
+
+                    if (window.location.pathname !== l.href) {
+                      window.history.pushState({}, "", l.href);
+                      window.dispatchEvent(new PopStateEvent("popstate"));
                     }
                   }}
                   className={`fm-nav__link${active === l.key ? " fm-nav__link--active" : ""}`}
@@ -747,7 +754,7 @@ export function ChatHead({ context }) {
       {open && (
         <section className="fm-chat-panel" role="dialog" aria-label="FarMe chat" style={panelStyle}>
           <header className="fm-chat-head">
-            <strong className="font-display text-lg">FarMe helper</strong>
+            <strong className="font-display text-lg">Sprout</strong>
             <span className="flex gap-2">
               {messages.length > 0 && (
                 <button
