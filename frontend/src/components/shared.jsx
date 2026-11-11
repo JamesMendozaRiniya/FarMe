@@ -14,6 +14,8 @@ import {
   Check,
   LogOut,
   X,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import "./shared.css";
 import { logout, sendChat } from "../services/farmeApi";
@@ -82,8 +84,9 @@ const unlockScroll = () => {
   openModals = Math.max(0, openModals - 1);
   if (openModals === 0) document.body.style.overflow = bodyOverflow;
 };
-  // props: title, onClose, wide = a wider dialog (for content like the crop suggestions)
-export function Modal({ title, onClose, wide, children }) {
+// props: title, onClose, wide = a wider dialog (for content like the crop suggestions),
+//        top = show above the chat window (use it for popups opened from the chat itself)
+export function Modal({ title, onClose, wide, top, children }) {
   // onClose changes on every render, so i keep the latest one in a ref and set the listeners up only once
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -99,7 +102,7 @@ export function Modal({ title, onClose, wide, children }) {
   return (
     // clicking the dark area outside the dialog closes it too
     <div
-      className="fm-modal-backdrop"
+      className={`fm-modal-backdrop${top ? " fm-modal-backdrop--top" : ""}`}
       role="presentation"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -127,17 +130,19 @@ export function Modal({ title, onClose, wide, children }) {
 }
 
 // "are you sure?" dialog, used instead of the browser's own confirm box.
-// props: danger = red confirm button, onConfirm = what happens on yes, onClose = cancel
+// props: danger = red confirm button, onConfirm = what happens on yes, onClose = cancel,
+//        top = show above the chat window
 export function ConfirmModal({
   title,
   message,
   confirmLabel = "Confirm",
   danger,
+  top,
   onConfirm,
   onClose,
 }) {
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} top={top}>
       <p className="mb-4">{message}</p>
       <div className="fm-modal__actions">
         <button type="button" className="fm-btn fm-btn--light" onClick={onClose}>
@@ -671,6 +676,7 @@ export function ChatHead({ context }) {
     }
   });
   const [open, setOpen] = useState(!!saved.open);
+  const [expanded, setExpanded] = useState(false); // big chat window (tablet and up; phones are always full screen)
   const [messages, setMessages] = useState(saved.messages || []);
   const [askClear, setAskClear] = useState(false);
   const [pos, setPos] = useState(saved.pos || { right: 16, bottom: 16 }); // distance from the window's right / bottom edge
@@ -768,18 +774,28 @@ export function ChatHead({ context }) {
 
   // desktop window: opens above the bubble, or below it when the bubble is in the top half of the screen
   const upper = pos.bottom > window.innerHeight / 2;
-  const panelStyle = {
-    right: Math.max(8, Math.min(pos.right, window.innerWidth - 360 - 8)),
-    ...(upper
-      ? {
-          top: window.innerHeight - pos.bottom + 8,
-          maxHeight: `calc(100vh - ${window.innerHeight - pos.bottom + 16}px)`,
-        }
-      : {
-          bottom: pos.bottom + BUBBLE + 8,
-          maxHeight: `calc(100vh - ${pos.bottom + BUBBLE + 16}px)`,
-        }),
-  };
+  const panelStyle = expanded
+    ? {
+        top: "2vh",
+        right: "2vw",
+        bottom: "2vh",
+        left: "2vw",
+        width: "auto",
+        height: "auto",
+        maxHeight: "none",
+      }
+    : {
+        right: Math.max(8, Math.min(pos.right, window.innerWidth - 360 - 8)),
+        ...(upper
+          ? {
+              top: window.innerHeight - pos.bottom + 8,
+              maxHeight: `calc(100vh - ${window.innerHeight - pos.bottom + 16}px)`,
+            }
+          : {
+              bottom: pos.bottom + BUBBLE + 8,
+              maxHeight: `calc(100vh - ${pos.bottom + BUBBLE + 16}px)`,
+            }),
+      };
 
   return (
     <>
@@ -788,6 +804,15 @@ export function ChatHead({ context }) {
           <header className="fm-chat-head">
             <strong className="font-display text-lg">Sprout</strong>
             <span className="flex gap-2">
+              <button
+                type="button"
+                className="fm-btn fm-btn--light !px-0 w-11 flex items-center justify-center"
+                onClick={() => setExpanded((value) => !value)}
+                aria-label={expanded ? "Restore chat size" : "Expand chat"}
+                title={expanded ? "Restore" : "Expand"}
+              >
+                {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              </button>
               {messages.length > 0 && (
                 <button
                   type="button"
@@ -864,6 +889,7 @@ export function ChatHead({ context }) {
           message="All the messages in this conversation will be deleted. This can't be undone."
           confirmLabel="Clear chat"
           danger
+          top
           onConfirm={() => {
             setMessages([]);
             setAskClear(false);
