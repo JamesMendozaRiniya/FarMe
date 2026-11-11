@@ -2,7 +2,6 @@
 // how to use them on any page:
 //   <Sidebar active="library" user={user} />
 //   <ChatHead context={{ page: "library" }} />
-import ReactMarkdown from "react-markdown";
 import { useState, useEffect, useRef } from "react";
 import {
   Menu,
@@ -15,12 +14,10 @@ import {
   Check,
   LogOut,
   X,
-  Maximize2,
-  Minimize2,
 } from "lucide-react";
 import "./shared.css";
 import { logout, sendChat } from "../services/farmeApi";
-import { useAvatarUri } from "./avatar";
+import { useAvatarUri, clearAvatarCache } from "./avatar";
 
 import sidebarLogo from "../assets/sidebar-logo.png";
 import sidebarHome from "../assets/sidebar-home.png";
@@ -438,6 +435,16 @@ const markImg = (key, state) =>
 const initials = (u) =>
   `${(u?.firstName || "")[0] || ""}${(u?.lastName || "")[0] || ""}`.toUpperCase() || "?";
 
+// the last user we saw, kept so the user card never disappears while GET /me is loading on a new page
+const USER_KEY = "fm-user";
+const readCachedUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY));
+  } catch {
+    return null;
+  }
+};
+
 // todo(backend): `user` comes from getUser() (GET /me). avatar = { style, seed, background } from the register page, drawn in the browser. avatarUrl = a full image URL for the profile photo. Leave both out and the card shows initials.
 export function Sidebar({ active = "home", user, onHome }) {
   const [collapsed, setCollapsed] = useState(() => {
@@ -468,9 +475,24 @@ export function Sidebar({ active = "home", user, onHome }) {
 
   const [askLogout, setAskLogout] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false); // true when avatarUrl can't be loaded, so we show initials instead
-  useEffect(() => setAvatarFailed(false), [user?.avatarUrl]);
-  const avatarUri = useAvatarUri(user?.avatar);
-  const name = user ? `${user.firstName} ${user.lastName}`.trim() : "";
+
+  // use the last known user while /me loads, so the card is there on the very first frame
+  const [cachedUser] = useState(readCachedUser);
+  // pages often start with an empty placeholder object ({ firstName: "", ... }), which is not a real user yet
+  const hasUser = !!(user && (user.firstName || user.lastName || user.username));
+  const shownUser = hasUser ? user : cachedUser;
+  useEffect(() => {
+    if (!hasUser) return;
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } catch {
+      /* storage blocked */
+    }
+  }, [user, hasUser]);
+
+  useEffect(() => setAvatarFailed(false), [shownUser?.avatarUrl]);
+  const avatarUri = useAvatarUri(shownUser?.avatar);
+  const name = shownUser ? `${shownUser.firstName} ${shownUser.lastName}`.trim() : "";
 
   return (
     <>
@@ -556,23 +578,21 @@ export function Sidebar({ active = "home", user, onHome }) {
 
           {/* bottom: user card (initials + name + role, from the backend) and log out */}
           <div className="fm-nav__footer">
-            {name && (
-              <div className="fm-user" title={name}>
-                <span className="fm-user__avatar" aria-hidden="true">
-                  {avatarUri ? (
-                    <img src={avatarUri} alt="" draggable={false} />
-                  ) : user.avatarUrl && !avatarFailed ? (
-                    <img src={user.avatarUrl} alt="" draggable={false} onError={() => setAvatarFailed(true)} />
-                  ) : (
-                    initials(user)
-                  )}
-                </span>
-                <span className="fm-user__text">
-                  <span className="fm-user__name">{name}</span>
-                  <span className="fm-user__role">{user.role || "Farmer"}</span>
-                </span>
-              </div>
-            )}
+            <div className="fm-user" title={name}>
+              <span className="fm-user__avatar" aria-hidden="true">
+                {!shownUser ? null : avatarUri ? (
+                  <img src={avatarUri} alt="" draggable={false} />
+                ) : shownUser.avatarUrl && !avatarFailed ? (
+                  <img src={shownUser.avatarUrl} alt="" draggable={false} onError={() => setAvatarFailed(true)} />
+                ) : (
+                  initials(shownUser)
+                )}
+              </span>
+              <span className="fm-user__text">
+                <span className="fm-user__name">{name || "\u00A0"}</span>
+                <span className="fm-user__role">{shownUser ? shownUser.role || "Farmer" : "\u00A0"}</span>
+              </span>
+            </div>
             <button
               type="button"
               onClick={() => setAskLogout(true)}
@@ -615,7 +635,16 @@ export function Sidebar({ active = "home", user, onHome }) {
           title="Log out?"
           message="You'll need to log in again to see your farm."
           confirmLabel="Log out"
-          onConfirm={() => logout()}
+          onConfirm={() => {
+            // forget the saved user and avatar so the next person on this device never sees them
+            try {
+              localStorage.removeItem(USER_KEY);
+            } catch {
+              /* storage blocked */
+            }
+            clearAvatarCache();
+            logout();
+          }}
           onClose={() => setAskLogout(false)}
         />
       )}
@@ -629,11 +658,7 @@ const clampPos = (p) => ({
   bottom: Math.min(Math.max(8, p.bottom), window.innerHeight - BUBBLE - 8),
 });
 
-const SUGGESTIONS = [
-  "What should I plant now?",
-  "How often should I water?",
-  "Will the weather affect my crops?",
-];
+const SUGGESTIONS = ["What should I plant now?", "How often should I water?"];
 
 export function ChatHead({ context }) {
   // restore what i saved on the last page
@@ -646,7 +671,6 @@ export function ChatHead({ context }) {
     }
   });
   const [open, setOpen] = useState(!!saved.open);
-  const [expanded, setExpanded] = useState(false);
   const [messages, setMessages] = useState(saved.messages || []);
   const [askClear, setAskClear] = useState(false);
   const [pos, setPos] = useState(saved.pos || { right: 16, bottom: 16 }); // distance from the window's right / bottom edge
@@ -744,50 +768,26 @@ export function ChatHead({ context }) {
 
   // desktop window: opens above the bubble, or below it when the bubble is in the top half of the screen
   const upper = pos.bottom > window.innerHeight / 2;
-  const panelStyle = expanded
-    ? {
-        top: "2vh",
-        right: "2vw",
-        bottom: "2vh",
-        left: "2vw",
-        width: "auto",
-        height: "auto",
-        maxHeight: "none",
-      }
-    : {
-        right: Math.max(8, Math.min(pos.right, window.innerWidth - 360 - 8)),
-        ...(upper
-          ? {
-              top: window.innerHeight - pos.bottom + 8,
-              maxHeight: `calc(100vh - ${window.innerHeight - pos.bottom + 16}px)`,
-            }
-          : {
-              bottom: pos.bottom + BUBBLE + 8,
-              maxHeight: `calc(100vh - ${pos.bottom + BUBBLE + 16}px)`,
-            }),
-      };
+  const panelStyle = {
+    right: Math.max(8, Math.min(pos.right, window.innerWidth - 360 - 8)),
+    ...(upper
+      ? {
+          top: window.innerHeight - pos.bottom + 8,
+          maxHeight: `calc(100vh - ${window.innerHeight - pos.bottom + 16}px)`,
+        }
+      : {
+          bottom: pos.bottom + BUBBLE + 8,
+          maxHeight: `calc(100vh - ${pos.bottom + BUBBLE + 16}px)`,
+        }),
+  };
 
   return (
     <>
       {open && (
-        <section
-          className="fm-chat-panel"
-          role="dialog"
-          aria-label="FarMe chat"
-          style={panelStyle}
-        >
+        <section className="fm-chat-panel" role="dialog" aria-label="FarMe chat" style={panelStyle}>
           <header className="fm-chat-head">
             <strong className="font-display text-lg">Sprout</strong>
             <span className="flex gap-2">
-              <button
-                type="button"
-                className="fm-btn fm-btn--light !px-0 w-11 flex items-center justify-center"
-                onClick={() => setExpanded((value) => !value)}
-                aria-label={expanded ? "Restore chat size" : "Expand chat"}
-                title={expanded ? "Restore" : "Expand"}
-              >
-                {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-              </button>
               {messages.length > 0 && (
                 <button
                   type="button"
@@ -824,30 +824,9 @@ export function ChatHead({ context }) {
               </>
             )}
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}
-              >
-                {m.role === "assistant" ? (
-                  <ReactMarkdown
-                    components={{
-                      ul: ({ children }) => (
-                        <ul className="fm-chat-list">{children}</ul>
-                      ),
-                      ol: ({ children }) => (
-                        <ol className="fm-chat-list fm-chat-list--ordered">{children}</ol>
-                      ),
-                      li: ({ children }) => (
-                        <li>{children}</li>
-                      ),
-                    }}
-                  >
-                    {m.text}
-                  </ReactMarkdown>
-                ) : (
-                  m.text
-                )}
-              </div>
+              <p key={m.id} className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}>
+                {m.text}
+              </p>
             ))}
             {busy && <p className="fm-msg fm-msg--bot">Typing…</p>}
             <div ref={endRef} />
@@ -911,5 +890,30 @@ export function ChatHead({ context }) {
         <Img src={chatbot} alt="" w={56} h={56} label="chat" />
       </button>
     </>
+  );
+}
+
+// a little sprout that grows out of the soil, for any "loading" moment. look: .fm-sprout in shared.css.
+// size="sm" is the inline version (icon and text side by side), good inside cards and next to buttons.
+// size="fill" centers it in the middle of the panel it is put in (both ways), good for a page or book that is still loading.
+export function SproutLoader({ label = "Loading", size = "md" }) {
+  const cls = size === "sm" ? " fm-sprout--sm" : size === "fill" ? " fm-sprout--fill" : "";
+  return (
+    <div className={`fm-sprout${cls}`} role="status" aria-live="polite">
+      <svg className="fm-sprout__svg" viewBox="0 0 64 64" aria-hidden="true">
+        <path className="fm-sprout__stem" pathLength="1" d="M32 52 V30" />
+        <path className="fm-sprout__leaf fm-sprout__leaf--l" d="M32 34 C20 34 13 26 13 17 C24 17 32 24 32 34 Z" />
+        <path className="fm-sprout__leaf fm-sprout__leaf--r" d="M32 34 C44 34 51 26 51 17 C40 17 32 24 32 34 Z" />
+        <path className="fm-sprout__soil" d="M8 60 C12 48 52 48 56 60 Z" />
+      </svg>
+      <span className="fm-sprout__label">
+        {label}
+        <span className="fm-sprout__dots" aria-hidden="true">
+          <i>.</i>
+          <i>.</i>
+          <i>.</i>
+        </span>
+      </span>
+    </div>
   );
 }

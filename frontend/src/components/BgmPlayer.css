@@ -1,0 +1,167 @@
+/* hidden YouTube player: kept on the page (not display:none) so it still works */
+.fm-bgm__yt {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* wrapper: fixed positioning lives here */
+.fm-bgm-wrap {
+  position: fixed;
+  top: 36px;
+  right: 44px;
+  z-index: 40; /* above the chat bubble (30) and chat window (31), under popups (1000) */
+}
+
+/* same look as the .fm-btn buttons in shared.css: pine border + hard offset shadow */
+.fm-bgm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  min-height: 0;
+  padding: 0;
+  color: var(--pine, #202808);
+  background: var(--paper, #fbf6ea);
+  border: 3px solid var(--pine, #202808);
+  border-radius: 0.75rem;
+  box-shadow: 3px 3px 0 var(--pine, #202808);
+  cursor: pointer;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background-color 0.1s ease;
+}
+@media (hover: hover) {
+  .fm-bgm:not(:disabled):hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--pine, #202808);
+  }
+}
+.fm-bgm:not(:disabled):active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+.fm-bgm:focus-visible {
+  outline: 3px solid var(--copper, #c4866d);
+  outline-offset: 2px;
+}
+.fm-bgm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* music playing: warm copper fill, like .fm-btn--accent */
+.fm-bgm--on {
+  color: var(--pine, #202808);
+  background: var(--copper, #c4866d);
+}
+
+/* volume pill: sits right under the button, shown on hover / keyboard focus.
+   the outer box has top padding so the mouse can travel from the button to the
+   slider without the pill disappearing */
+.fm-bgm-vol {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  padding-top: 12px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0s linear 0.15s;
+}
+.fm-bgm-wrap:hover .fm-bgm-vol,
+.fm-bgm-wrap:focus-within .fm-bgm-vol {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+  transition-delay: 0s;
+}
+.fm-bgm-vol__pill {
+  display: flex;
+  align-items: center;
+  padding: 0.55rem 0.8rem;
+  background: var(--paper, #fbf6ea);
+  border: 3px solid var(--pine, #202808);
+  border-radius: 0.75rem;
+  box-shadow: 3px 3px 0 var(--pine, #202808);
+}
+.fm-bgm-vol__range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 10px;
+  margin: 0;
+  background: linear-gradient(
+    to right,
+    var(--copper, #c4866d) var(--v, 40%),
+    rgba(32, 40, 8, 0.12) var(--v, 40%)
+  );
+  border: 2px solid var(--pine, #202808);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.fm-bgm-vol__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--copper, #c4866d);
+  border: 3px solid var(--pine, #202808);
+  border-radius: 50%;
+}
+.fm-bgm-vol__range::-moz-range-track {
+  background: transparent;
+}
+.fm-bgm-vol__range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--copper, #c4866d);
+  border: 3px solid var(--pine, #202808);
+  border-radius: 50%;
+}
+.fm-bgm-vol__range:focus-visible {
+  outline: 3px solid var(--copper, #c4866d);
+  outline-offset: 3px;
+}
+/* touch screens have no hover, so keep the slider visible there */
+@media (hover: none) {
+  .fm-bgm-vol {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+  }
+  .fm-bgm-vol__range {
+    width: 96px;
+  }
+}
+
+@media (max-width: 767px) {
+  .fm-bgm-wrap {
+    top: 0.6rem;
+    right: 0.6rem;
+  }
+  .fm-bgm {
+    width: 40px;
+    height: 40px;
+    border-radius: 0.6rem;
+    box-shadow: 2px 2px 0 var(--pine, #202808);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-bgm,
+  .fm-bgm-vol {
+    transition: none;
+  }
+}

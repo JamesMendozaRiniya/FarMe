@@ -1318,6 +1318,13 @@ const TABS = [
 export default function FarMeLibrary() {
   const [slots, setSlots] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  // keep the skeleton on screen for at least this long, so a fast load doesn't just flash it
+  const [minDone, setMinDone] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMinDone(true), 600);
+    return () => clearTimeout(t);
+  }, []);
+  const shown = loaded && minDone;
   const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); // empty until getUser answers, so no placeholder name shows
   const [tab, setTab] = useState("fields");
   const [query, setQuery] = useState("");
@@ -1705,7 +1712,7 @@ export default function FarMeLibrary() {
               )}
             </div>
 
-            {tab === "fields" && loaded && slots.length > 0 && (
+            {tab === "fields" && shown && slots.length > 0 && (
               <div role="group" aria-label="Show the list by" className="fm-seg">
                 {[
                   ["crop", "Grouped", LayoutGrid, fields.reduce((n, f) => n + f.tiles.length, 0)],
@@ -1720,9 +1727,25 @@ export default function FarMeLibrary() {
               </div>
             )}
 
-            {!loaded && <p aria-live="polite">Loading your fields…</p>}
+            {!shown && (
+              <div aria-busy="true" className="flex flex-col gap-5">
+                <span className="sr-only">Loading your fields</span>
+                {[0, 1].map((i) => (
+                  <div key={i} aria-hidden="true" className="flex flex-col gap-2">
+                    <span className="fm-bone fm-bone--line" style={{ width: "5rem" }} />
+                    <span className="fm-bone fm-bone--title" style={{ width: "9rem" }} />
+                    <span className="fm-bone fm-bone--line" style={{ width: "40%" }} />
+                    <div className="flex gap-3 mt-1">
+                      {[0, 1, 2].map((j) => (
+                        <span key={j} className="fm-bone" style={{ width: 84, height: 84 }} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            {loaded && slots.length === 0 && (
+            {shown && slots.length === 0 && (
               <div className="flex flex-col items-center text-center gap-2 py-8">
                 <Img
                   src={dashboardEmpty}
@@ -1742,7 +1765,7 @@ export default function FarMeLibrary() {
               </div>
             )}
 
-            {loaded && slots.length > 0 && tab === "fields" && (
+            {shown && slots.length > 0 && tab === "fields" && (
               <>
                 {fields.length === 0 && <p>No crops match your search or filter.</p>}
                 {view === "crop" &&
@@ -1765,7 +1788,7 @@ export default function FarMeLibrary() {
               </>
             )}
 
-            {loaded && slots.length > 0 && tab === "harvest" && (
+            {shown && slots.length > 0 && tab === "harvest" && (
               <>
                 <CropTabs
                   crops={harvestCrops}
@@ -1835,7 +1858,7 @@ export default function FarMeLibrary() {
               </>
             )}
 
-            {loaded && slots.length > 0 && tab === "journal" && (
+            {shown && slots.length > 0 && tab === "journal" && (
               <>
                 <CropTabs
                   crops={journalCrops}

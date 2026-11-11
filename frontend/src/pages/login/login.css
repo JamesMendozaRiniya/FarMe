@@ -187,7 +187,7 @@
   position: absolute;
   left: -16%;
   right: -16%;
-  bottom: -2%;
+  bottom: var(--patch-lift, 7%); /* raise this if the sprout still floats above the grass, lower it if it sinks into it */
   height: 21%;
   background:
     radial-gradient(ellipse at 50% 20%, #c2cf9f 0 35%, transparent 36%),

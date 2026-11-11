@@ -44,18 +44,14 @@ class RegisterRequest(BaseModel):
         extra="forbid"
     )
 
-    first_name: str = Field(alias="firstName", min_length=1, max_length=40)
-    last_name: str = Field(alias="lastName", min_length=1, max_length=40)
+    first_name: str = Field(alias="firstName", min_length=1, max_length=100)
+    last_name: str = Field(alias="lastName", min_length=1, max_length=100)
 
-    username: str = Field(min_length=3, max_length=20)
-    email: EmailStr = Field(max_length=100)
+    username: str = Field(min_length=3, max_length=50)
+    email: EmailStr
 
-    password: str = Field(min_length=8, max_length=72)
-    confirm_password: str = Field(
-        alias="confirmPassword",
-        min_length=8,
-        max_length=72
-    )
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(alias="confirmPassword", min_length=8, max_length=128)
 
     avatar: AvatarSchema | None = None
 
@@ -91,11 +87,6 @@ class RegisterRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_password_confirmation(self):
-        if self.password != self.password.strip():
-            raise ValueError(
-                "Password cannot start or end with whitespace."
-            )
-
         if self.password != self.confirm_password:
             raise ValueError("Passwords do not match.")
 
@@ -115,7 +106,7 @@ class LoginRequest(BaseModel):
     )
 
     login: str = Field(alias="identifier", min_length=1, max_length=255)
-    password: str = Field(min_length=1, max_length=72)
+    password: str = Field(min_length=1, max_length=128)
 
     @field_validator("login")
     @classmethod
@@ -132,8 +123,6 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     avatar: AvatarSchema | None = None
-
-
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -145,16 +134,11 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str = Field(min_length=1, max_length=255)
-    new_password: str = Field(min_length=8, max_length=72)
+    new_password: str = Field(min_length=8, max_length=128)
 
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, value):
-        if value != value.strip():
-            raise ValueError(
-                "Password cannot start or end with whitespace."
-            )
-
         if not re.search(r"[A-Za-z]", value):
             raise ValueError("Password must contain at least one letter.")
 

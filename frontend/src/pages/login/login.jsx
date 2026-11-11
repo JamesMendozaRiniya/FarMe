@@ -83,8 +83,7 @@ export default function Login() {
         password: values.password, // never trimmed: spaces can be part of a password
         remember: values.remember,
       });
-      window.history.pushState({}, "", AFTER_LOGIN_HREF);
-      window.dispatchEvent(new PopStateEvent("popstate"));
+      window.location.assign(AFTER_LOGIN_HREF);
     } catch (err) {
       setStatus("idle");
       fail();

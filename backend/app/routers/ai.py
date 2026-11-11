@@ -16,7 +16,6 @@ router = APIRouter(
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
-    context: dict | None = None
 
 
 class ChatResponse(BaseModel):
@@ -29,10 +28,7 @@ async def chat(
     current_user=Depends(get_current_user)
 ):
     try:
-        response = await generate_ai_response(
-            request.message,
-            request.context
-        )
+        response = await generate_ai_response(request.message)
 
         return ChatResponse(response=response)
 

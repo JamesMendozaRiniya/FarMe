@@ -32,34 +32,7 @@ const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 
 function Spot({ href, label, hint, children }) {
   return (
-    <a
-      href={href}
-      className="fm-home__spot"
-      aria-label={`${label}: ${hint}`}
-      onClick={(e) => {
-        if (
-          e.button !== 0 ||
-          e.metaKey ||
-          e.ctrlKey ||
-          e.shiftKey ||
-          e.altKey
-        ) {
-          return;
-        }
-
-        e.preventDefault();
-
-        const [path, hash] = href.split("#");
-        const target = path || window.location.pathname;
-
-        if (window.location.pathname !== target) {
-          window.history.pushState({}, "", href);
-          window.dispatchEvent(new PopStateEvent("popstate"));
-        } else if (hash) {
-          window.location.hash = hash;
-        }
-      }}
-    >
+    <a href={href} className="fm-home__spot" aria-label={`${label}: ${hint}`}>
       <title>{`${label}: ${hint}`}</title>
       {children}
     </a>
