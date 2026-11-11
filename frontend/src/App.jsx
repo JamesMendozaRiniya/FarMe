@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import FarMeHome from "./pages/home/home";
 import FarMeDashboard from "./pages/dashboard/dashboard";
 import FarMeLibrary from "./pages/library/library";
@@ -7,34 +7,31 @@ import Login from "./pages/login/login";
 import ForgotPassword from "./pages/forgot-password/forgot-password";
 import ResetPassword from "./pages/reset-password/reset-password";
 import Settings from "./pages/settings/settings";
+import BgmPlayer from "./components/BgmPlayer";
 import { getUser } from "./services/farmeApi";
 
-export default function App() {
-  const [path, setPath] = useState(window.location.pathname);
+const PUBLIC_PAGES = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+];
+
+function AppRoutes({ path, onAuth }) {
   const [status, setStatus] = useState("checking");
+  const confirmedRef = useRef(false); // the server already confirmed this login
 
   useEffect(() => {
-    const handleNavigation = () => {
-      setPath(window.location.pathname);
-    };
-
-    window.addEventListener("popstate", handleNavigation);
-
-    return () => {
-      window.removeEventListener("popstate", handleNavigation);
-    };
-  }, []);
-
-  useEffect(() => {
-    const publicPages = [
-      "/login",
-      "/register",
-      "/forgot-password",
-      "/reset-password",
-    ];
-
-    if (publicPages.some((page) => path.startsWith(page))) {
+    if (PUBLIC_PAGES.some((page) => path.startsWith(page))) {
       setStatus("authenticated");
+      confirmedRef.current = false; // signed out (or not yet in): check again next time
+      onAuth(false);
+      return;
+    }
+
+    // already checked on an earlier page, so moving between pages needs no new check
+    if (confirmedRef.current) {
+      onAuth(true);
       return;
     }
 
@@ -42,7 +39,10 @@ export default function App() {
 
     getUser()
       .then(() => {
-        if (active) setStatus("authenticated");
+        if (!active) return;
+        setStatus("authenticated");
+        confirmedRef.current = true;
+        onAuth(true); // the login check passed: the music is allowed to start
       })
       .catch((error) => {
         if (!active) return;
@@ -58,7 +58,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [path]);
 
   if (path.startsWith("/register")) return <Register />;
   if (path.startsWith("/login")) return <Login />;
@@ -78,4 +78,31 @@ export default function App() {
   if (path.startsWith("/settings")) return <Settings />;
 
   return <FarMeDashboard />;
+}
+
+export default function App() {
+  const [path, setPath] = useState(window.location.pathname);
+  const [signedIn, setSignedIn] = useState(false); // true only after the server confirmed the login
+  const onPublicPage = PUBLIC_PAGES.some((page) => path.startsWith(page));
+
+  useEffect(() => {
+    const handleNavigation = () => {
+      setPath(window.location.pathname);
+    };
+
+    window.addEventListener("popstate", handleNavigation);
+
+    return () => {
+      window.removeEventListener("popstate", handleNavigation);
+    };
+  }, []);
+
+  return (
+    <>
+      <AppRoutes path={path} onAuth={setSignedIn} />
+      {/* stays mounted so the music keeps playing between pages, but it only starts once you are
+          signed in (never on login / register / password pages); the button only shows on home */}
+      <BgmPlayer enabled={signedIn && !onPublicPage} showButton={path.startsWith("/home")} />
+    </>
+  );
 }

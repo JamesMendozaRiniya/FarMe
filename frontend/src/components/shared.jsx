@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import "./shared.css";
 import { logout, sendChat } from "../services/farmeApi";
-import { useAvatarUri } from "./avatar";
+import { useAvatarUri, clearAvatarCache } from "./avatar";
 
 import sidebarLogo from "../assets/sidebar-logo.png";
 import sidebarHome from "../assets/sidebar-home.png";
@@ -435,6 +435,16 @@ const markImg = (key, state) =>
 const initials = (u) =>
   `${(u?.firstName || "")[0] || ""}${(u?.lastName || "")[0] || ""}`.toUpperCase() || "?";
 
+// the last user we saw, kept so the user card never disappears while GET /me is loading on a new page
+const USER_KEY = "fm-user";
+const readCachedUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY));
+  } catch {
+    return null;
+  }
+};
+
 // todo(backend): `user` comes from getUser() (GET /me). avatar = { style, seed, background } from the register page, drawn in the browser. avatarUrl = a full image URL for the profile photo. Leave both out and the card shows initials.
 export function Sidebar({ active = "home", user, onHome }) {
   const [collapsed, setCollapsed] = useState(() => {
@@ -465,9 +475,24 @@ export function Sidebar({ active = "home", user, onHome }) {
 
   const [askLogout, setAskLogout] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false); // true when avatarUrl can't be loaded, so we show initials instead
-  useEffect(() => setAvatarFailed(false), [user?.avatarUrl]);
-  const avatarUri = useAvatarUri(user?.avatar);
-  const name = user ? `${user.firstName} ${user.lastName}`.trim() : "";
+
+  // use the last known user while /me loads, so the card is there on the very first frame
+  const [cachedUser] = useState(readCachedUser);
+  // pages often start with an empty placeholder object ({ firstName: "", ... }), which is not a real user yet
+  const hasUser = !!(user && (user.firstName || user.lastName || user.username));
+  const shownUser = hasUser ? user : cachedUser;
+  useEffect(() => {
+    if (!hasUser) return;
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } catch {
+      /* storage blocked */
+    }
+  }, [user, hasUser]);
+
+  useEffect(() => setAvatarFailed(false), [shownUser?.avatarUrl]);
+  const avatarUri = useAvatarUri(shownUser?.avatar);
+  const name = shownUser ? `${shownUser.firstName} ${shownUser.lastName}`.trim() : "";
 
   return (
     <>
@@ -553,23 +578,21 @@ export function Sidebar({ active = "home", user, onHome }) {
 
           {/* bottom: user card (initials + name + role, from the backend) and log out */}
           <div className="fm-nav__footer">
-            {name && (
-              <div className="fm-user" title={name}>
-                <span className="fm-user__avatar" aria-hidden="true">
-                  {avatarUri ? (
-                    <img src={avatarUri} alt="" draggable={false} />
-                  ) : user.avatarUrl && !avatarFailed ? (
-                    <img src={user.avatarUrl} alt="" draggable={false} onError={() => setAvatarFailed(true)} />
-                  ) : (
-                    initials(user)
-                  )}
-                </span>
-                <span className="fm-user__text">
-                  <span className="fm-user__name">{name}</span>
-                  <span className="fm-user__role">{user.role || "Farmer"}</span>
-                </span>
-              </div>
-            )}
+            <div className="fm-user" title={name}>
+              <span className="fm-user__avatar" aria-hidden="true">
+                {!shownUser ? null : avatarUri ? (
+                  <img src={avatarUri} alt="" draggable={false} />
+                ) : shownUser.avatarUrl && !avatarFailed ? (
+                  <img src={shownUser.avatarUrl} alt="" draggable={false} onError={() => setAvatarFailed(true)} />
+                ) : (
+                  initials(shownUser)
+                )}
+              </span>
+              <span className="fm-user__text">
+                <span className="fm-user__name">{name || "\u00A0"}</span>
+                <span className="fm-user__role">{shownUser ? shownUser.role || "Farmer" : "\u00A0"}</span>
+              </span>
+            </div>
             <button
               type="button"
               onClick={() => setAskLogout(true)}
@@ -612,7 +635,16 @@ export function Sidebar({ active = "home", user, onHome }) {
           title="Log out?"
           message="You'll need to log in again to see your farm."
           confirmLabel="Log out"
-          onConfirm={() => logout()}
+          onConfirm={() => {
+            // forget the saved user and avatar so the next person on this device never sees them
+            try {
+              localStorage.removeItem(USER_KEY);
+            } catch {
+              /* storage blocked */
+            }
+            clearAvatarCache();
+            logout();
+          }}
           onClose={() => setAskLogout(false)}
         />
       )}
@@ -858,5 +890,30 @@ export function ChatHead({ context }) {
         <Img src={chatbot} alt="" w={56} h={56} label="chat" />
       </button>
     </>
+  );
+}
+
+// a little sprout that grows out of the soil, for any "loading" moment. look: .fm-sprout in shared.css.
+// size="sm" is the inline version (icon and text side by side), good inside cards and next to buttons.
+// size="fill" centers it in the middle of the panel it is put in (both ways), good for a page or book that is still loading.
+export function SproutLoader({ label = "Loading", size = "md" }) {
+  const cls = size === "sm" ? " fm-sprout--sm" : size === "fill" ? " fm-sprout--fill" : "";
+  return (
+    <div className={`fm-sprout${cls}`} role="status" aria-live="polite">
+      <svg className="fm-sprout__svg" viewBox="0 0 64 64" aria-hidden="true">
+        <path className="fm-sprout__stem" pathLength="1" d="M32 52 V30" />
+        <path className="fm-sprout__leaf fm-sprout__leaf--l" d="M32 34 C20 34 13 26 13 17 C24 17 32 24 32 34 Z" />
+        <path className="fm-sprout__leaf fm-sprout__leaf--r" d="M32 34 C44 34 51 26 51 17 C40 17 32 24 32 34 Z" />
+        <path className="fm-sprout__soil" d="M8 60 C12 48 52 48 56 60 Z" />
+      </svg>
+      <span className="fm-sprout__label">
+        {label}
+        <span className="fm-sprout__dots" aria-hidden="true">
+          <i>.</i>
+          <i>.</i>
+          <i>.</i>
+        </span>
+      </span>
+    </div>
   );
 }

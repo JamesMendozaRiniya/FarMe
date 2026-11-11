@@ -42,14 +42,30 @@ export const newSeed = () => Math.random().toString(36).slice(2, 10);
 // the starting point when somebody opens the avatar maker
 export const startAvatar = () => ({ style: AVATAR_STYLES[0].key, seed: newSeed(), background: "dec59e" });
 
-// style definitions are downloaded once and kept
+// ---------------------------------------------------------------------------
+// caches. these are what stop the avatar from flickering (initials first, picture a moment later).
+//   styleCache  key -> Promise<Style>   style definitions are downloaded once and kept
+//   styleReady  key -> Style            the same styles, but already resolved, so render can read them right away
+//   uriCache    "style|seed|bg" -> data: address of the finished picture
+// finished pictures are also saved in localStorage, so a new page (or a reload) shows the avatar on the first paint.
+// ---------------------------------------------------------------------------
 const styleCache = new Map();
+const styleReady = new Map();
+const uriCache = new Map();
+
+const LS_PREFIX = "fm-avatar:";
+const keyOf = (a) => `${a.style}|${a.seed}|${a.background || ""}`;
+
 export function loadStyle(key) {
   if (!styleCache.has(key)) {
     const found = AVATAR_STYLES.find((s) => s.key === key);
     if (!found) return Promise.reject(new Error(`Unknown avatar style: ${key}`));
+    const p = found.load().then((mod) => {
+      const style = new Style(mod.default);
+      styleReady.set(key, style);
+      return style;
+    });
     // if the download fails, forget it so the next try can start again
-    const p = found.load().then((mod) => new Style(mod.default));
     p.catch(() => styleCache.delete(key));
     styleCache.set(key, p);
   }
@@ -67,24 +83,69 @@ export function avatarUri(style, avatar) {
   }
 }
 
-// useAvatarUri({ style, seed, background }) -> data address (or null while it loads / when there is no avatar)
+// returns the picture right now if we can: memory, then localStorage, then drawn from an already-loaded style.
+// returns null only when the style still has to be downloaded.
+function cachedUri(avatar) {
+  const k = keyOf(avatar);
+  if (uriCache.has(k)) return uriCache.get(k);
+
+  try {
+    const saved = localStorage.getItem(LS_PREFIX + k);
+    if (saved) {
+      uriCache.set(k, saved);
+      return saved;
+    }
+  } catch {
+    /* storage blocked */
+  }
+
+  const style = styleReady.get(avatar.style);
+  if (!style) return null;
+  const uri = avatarUri(style, avatar);
+  if (uri) {
+    uriCache.set(k, uri);
+    try {
+      localStorage.setItem(LS_PREFIX + k, uri);
+    } catch {
+      /* storage blocked or full */
+    }
+  }
+  return uri;
+}
+
+// call this on logout so the next person on this device never sees the previous avatar
+export function clearAvatarCache() {
+  uriCache.clear();
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(LS_PREFIX))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* storage blocked */
+  }
+}
+
+// useAvatarUri({ style, seed, background }) -> data address (or null while the style downloads / when there is no avatar)
 export function useAvatarUri(avatar) {
-  const [uri, setUri] = useState(null);
+  const [, rerender] = useState(0);
   const styleKey = avatar?.style;
   const seed = avatar?.seed;
   const background = avatar?.background || null;
+
+  // worked out during render, so a cached avatar is already there on the very first paint
+  const uri = styleKey ? cachedUri({ style: styleKey, seed, background }) : null;
+
   useEffect(() => {
-    if (!styleKey) {
-      setUri(null);
-      return undefined;
-    }
+    if (!styleKey || uri) return undefined;
     let alive = true;
+    // once the style is downloaded, render again: cachedUri() can now draw it
     loadStyle(styleKey)
-      .then((style) => alive && setUri(avatarUri(style, { seed, background })))
-      .catch(() => alive && setUri(null));
+      .then(() => alive && rerender((n) => n + 1))
+      .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [styleKey, seed, background]);
+  }, [styleKey, seed, background, uri]);
+
   return uri;
 }

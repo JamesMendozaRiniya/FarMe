@@ -53,10 +53,46 @@ import { SOILS, CROPS, cropByKey } from "../../data/crops";
 import dashboardNotif from "../../assets/dashboard-notif.png";
 import dashboardEmpty from "../../assets/dashboard-empty-state.png";
 import trowelImg from "../../assets/trowel.png";
+import sproutShocked from "../../assets/sprout/shocked.png";
+import sproutHappy from "../../assets/sprout/happy.png";
 
 const MAX_DIM_M = 200;
 const MIN_DIM_M = 0.5;
 const MAX_CELLS = 2500;
+const MAX_NAME = 40; // longest field name (change this number to allow more or fewer characters)
+// the backend only accepts letters, numbers, spaces and these marks:  _ . ' ’ -   (see the name check in backend/app/schemas/slot.py)
+const NAME_BAD = /[^\p{L}\p{N} _.'’-]/gu;
+// cleans a typed name to fit the backend rules. returns the cleaned text and, when something had to be
+// removed or cut, the warning to show in the limit dialog
+function checkName(raw) {
+  const clean = raw.replace(NAME_BAD, "");
+  if (clean !== raw)
+    return {
+      value: clean.slice(0, MAX_NAME),
+      hit: {
+        title: "That character isn't allowed",
+        lines: [
+          "A field name can use letters, numbers, spaces and these marks: _ . ' -",
+          "We removed the ones that don't fit.",
+        ],
+      },
+    };
+  if (raw.length > MAX_NAME)
+    return {
+      value: raw.slice(0, MAX_NAME),
+      hit: {
+        title: "Name is too long",
+        lines: [`A field name can have up to ${MAX_NAME} characters, so we kept the first ${MAX_NAME}.`],
+      },
+    };
+  return { value: raw, hit: null };
+}
+// a name that's already taken becomes "Field 1 - 2", "Field 1 - 3"... (no brackets, the backend doesn't allow them)
+// and the original is shortened if needed so the whole name still fits in MAX_NAME
+const withSuffix = (base, n) => {
+  const tail = ` - ${n}`;
+  return `${base.slice(0, MAX_NAME - tail.length).trimEnd()}${tail}`;
+};
 const CELL = 30; 
 const TROWEL_SIZE = 44; 
 const TROWEL_TIP = { x: 4, y: 4 }; // where the blade tip is inside the png, measured from its bottom-left corner. nudge if the tip feels off
@@ -99,8 +135,8 @@ function parseDim(text) {
   if (!t) return { error: "Enter a number." };
   if (!/^\d*\.?\d+$/.test(t)) return { error: "Use a positive number, like 20 or 12.5." };
   const value = Number(t);
-  if (value < MIN_DIM_M) return { error: `Min is ${MIN_DIM_M} m.` };
-  if (value > MAX_DIM_M) return { error: `Max is ${MAX_DIM_M} m.` };
+  if (value < MIN_DIM_M) return { error: `Min is ${MIN_DIM_M} m.`, limit: true };
+  if (value > MAX_DIM_M) return { error: `Max is ${MAX_DIM_M} m.`, limit: true };
   return { value };
 }
 // one square = one plant of any crop. squares get bigger on very big plots so the grid stays usable.
@@ -912,6 +948,30 @@ function LocationPicker({ value, onChange, error }) {
   );
 }
 
+// "you hit a limit" dialog: says what the limit is and what we did about it
+// props: title, lines = array of sentences, onClose
+function LimitModal({ title, lines, onClose }) {
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <Img src={sproutShocked} alt="" w={72} h={72} label="sprout" />
+          <div role="alert" className="flex flex-col gap-1 min-w-0">
+            {lines.map((t) => (
+              <p key={t} className="break-words">
+                {t}
+              </p>
+            ))}
+          </div>
+        </div>
+        <button type="button" onClick={onClose} className="fm-btn fm-btn--primary" autoFocus>
+          Got it
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   const editing = !!slot;
   const [name, setName] = useState(slot ? slot.name : defaultName);
@@ -935,15 +995,57 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   const [soil, setSoil] = useState(slot ? slot.soil : "");
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [limit, setLimit] = useState(null); // { title, lines, focusId }: the "you hit a limit" dialog
   const pw = parseDim(w);
   const pl = parseDim(l);
   const area = pw.value && pl.value ? pw.value * pl.value : null;
   const locError = !loc.text.trim() ? "Pick or search for your town or city." : "";
   const soilError = !soil ? "Pick a soil type." : "";
 
+  // close the limit dialog and put the cursor back in the field that caused it
+  const closeLimit = () => {
+    const id = limit?.focusId;
+    setLimit(null);
+    if (id) setTimeout(() => document.getElementById(id)?.focus(), 0);
+  };
+  // the name can't go past MAX_NAME: keep the first MAX_NAME characters and say why
+  const changeName = (e) => {
+    const { value, hit } = checkName(e.target.value);
+    setName(value);
+    if (hit) setLimit({ focusId: "slot-name", ...hit });
+  };
+  // a width / length past the biggest allowed size: use the biggest one and say why
+  const changeDim = (label, id, setValue) => (e) => {
+    const text = e.target.value;
+    const t = text.trim().replace(",", ".");
+    if (/^\d*\.?\d+$/.test(t) && Number(t) > MAX_DIM_M) {
+      setValue(String(MAX_DIM_M));
+      setLimit({
+        focusId: id,
+        title: `${label} is too big`,
+        lines: [`The biggest allowed is ${MAX_DIM_M} m, so we set it to ${MAX_DIM_M} m.`],
+      });
+      return;
+    }
+    setValue(text);
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setTried(true);
+    // too small / too big: the red message stays under the field, and this dialog explains the range
+    const hit = [
+      ["Width", pw, "slot-w"],
+      ["Length", pl, "slot-l"],
+    ].filter(([, p]) => p.limit);
+    if (hit.length) {
+      setLimit({
+        focusId: hit[0][2],
+        title: "Size is out of range",
+        lines: hit.map(([label]) => `${label} must be between ${MIN_DIM_M} m and ${MAX_DIM_M} m.`),
+      });
+      return;
+    }
     if (pw.error || pl.error || locError || soilError) return;
     setBusy(true);
     // use the picked place if there is one, otherwise try to find what was typed
@@ -987,7 +1089,7 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
         id={id}
         inputMode="decimal"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={changeDim(label.split(" ")[0], id, setValue)}
         placeholder="e.g. 20"
         aria-invalid={(tried || value) && parsed.error ? "true" : "false"}
         aria-describedby={`${id}-err`}
@@ -998,46 +1100,53 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   );
 
   return (
-    <Modal title={editing ? "Edit slot" : "Add a slot"} onClose={onClose}>
-      <form onSubmit={submit} className="flex flex-col gap-2" noValidate>
-        <div>
-          <label htmlFor="slot-name" className="block font-bold mb-1">
-            Field name
-          </label>
-          <input
-            id="slot-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="fm-input"
-          />
-        </div>
-        <p className="font-bold mt-2" aria-live="polite">
-          Plot size: {area ? `${fmt(area)} m²` : "—"}
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          {dim("Width (m)", "slot-w", w, setW, pw)}
-          {dim("Length (m)", "slot-l", l, setL, pl)}
-        </div>
-        <LocationPicker value={loc} onChange={setLoc} error={tried ? locError || geoErr : ""} />
-        <div>
-          <label htmlFor="slot-soil" className="block font-bold mb-1">
-            Soil type
-          </label>
-          <Select
-            id="slot-soil"
-            value={soil}
-            onChange={setSoil}
-            options={SOILS}
-            placeholder="Select soil type"
-            describedBy="slot-soil-err"
-          />
-          {err("slot-soil", tried, soilError)}
-        </div>
-        <button type="submit" disabled={busy} className={`fm-btn fm-btn--primary mt-1`}>
-          {editing ? (busy ? "Checking…" : "Save changes") : busy ? "Creating…" : "Create slot"}
-        </button>
-      </form>
-    </Modal>
+    <>
+      <Modal title={editing ? "Edit slot" : "Add a slot"} onClose={() => !limit && onClose()}>
+        <form onSubmit={submit} className="flex flex-col gap-2" noValidate>
+          <div>
+            <label htmlFor="slot-name" className="block font-bold mb-1">
+              Field name
+            </label>
+            <input
+              id="slot-name"
+              value={name}
+              onChange={changeName}
+              aria-describedby="slot-name-count"
+              className="fm-input"
+            />
+            <p id="slot-name-count" className="text-xs text-right mt-1">
+              {name.length}/{MAX_NAME}
+            </p>
+          </div>
+          <p className="font-bold mt-2" aria-live="polite">
+            Plot size: {area ? `${fmt(area)} m²` : "—"}
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {dim("Width (m)", "slot-w", w, setW, pw)}
+            {dim("Length (m)", "slot-l", l, setL, pl)}
+          </div>
+          <LocationPicker value={loc} onChange={setLoc} error={tried ? locError || geoErr : ""} />
+          <div>
+            <label htmlFor="slot-soil" className="block font-bold mb-1">
+              Soil type
+            </label>
+            <Select
+              id="slot-soil"
+              value={soil}
+              onChange={setSoil}
+              options={SOILS}
+              placeholder="Select soil type"
+              describedBy="slot-soil-err"
+            />
+            {err("slot-soil", tried, soilError)}
+          </div>
+          <button type="submit" disabled={busy} className={`fm-btn fm-btn--primary mt-1`}>
+            {editing ? (busy ? "Checking…" : "Save changes") : busy ? "Creating…" : "Create slot"}
+          </button>
+        </form>
+      </Modal>
+      {limit && <LimitModal title={limit.title} lines={limit.lines} onClose={closeLimit} />}
+    </>
   );
 }
 
@@ -1606,11 +1715,24 @@ export default function FarMeDashboard() {
   // state: slots = all saved fields, loaded = the db finished loading
   const [slots, setSlots] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  // keep the sprout on screen for at least this long, so a fast load doesn't just flash it
+  const [minDone, setMinDone] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMinDone(true), 600);
+    return () => clearTimeout(t);
+  }, []);
+  const ready = loaded && minDone;
   const [openId, setOpenId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState(null); // the card whose name is being edited
+  const [renameText, setRenameText] = useState(""); // what is typed in that name box
+  const [renameAsk, setRenameAsk] = useState(null); // "save" | "leave": the dialog asking what to do with the new name
+  const [renameLimit, setRenameLimit] = useState(null); // { title, lines }: the name limit warning
+  const [renameBusy, setRenameBusy] = useState(false);
+  const askingRef = useRef(false); // true while a dialog sits over the name box, so the box losing focus doesn't count as leaving
   const [showAdd, setShowAdd] = useState(false);
   const [showEdit, setShowEdit] = useState(false); // edit the open slot
   const [pendingEdit, setPendingEdit] = useState(null); // { data, changes }: edits waiting for "save these changes?"
+  const [updated, setUpdated] = useState(null); // { name }: the "slot updated" dialog shown after the edits are saved
   const [confirm, setConfirm] = useState(null); // { type: "plant" | "notif" | "notifs", id? }: a delete waiting for a yes / no
   const [toDelete, setToDelete] = useState(null); // the slot waiting for a yes / no
   const [harvesting, setHarvesting] = useState(null); // ids of the plants in the harvest dialog
@@ -1622,9 +1744,26 @@ export default function FarMeDashboard() {
   const [picked, setPicked] = useState([]); // ids of the plants selected with the trowel (select as many as you like)
   const [carry, setCarry] = useState([]); // ids of the plants the trowel is holding, to put down together
   const [toolMsg, setToolMsg] = useState(""); // short message about what the trowel just did
+  const [blocked, setBlocked] = useState(null); // { taken, outside } when plants can't be put down where you clicked
   const [plantedOn, setPlantedOn] = useState(todayIso());
   const [preview, setPreview] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [notice, setNotice] = useState(null); // { title, lines }: in-app replacement for the browser alert()
+  const plantingRef = useRef(false); // true while a plant request is in flight, so a double click can't plant twice
+
+  // one place for every error message: a friendly dialog instead of the browser's alert()
+  const showError = (error, fallback, title = "Something went wrong") => {
+    const msg = error?.message || fallback;
+    if (/already occupied/i.test(msg)) {
+      // the screen was out of date: reload the slots so the grid shows what is really planted
+      getSlots().then(setSlots).catch(() => {});
+      return setNotice({
+        title: "That square is taken",
+        lines: ["Something is already planted there.", "Pick another square, or use the trowel to move it."],
+      });
+    }
+    setNotice({ title, lines: [msg] });
+  };
 
   useEffect(() => {
     async function loadDashboard() {
@@ -1633,7 +1772,7 @@ export default function FarMeDashboard() {
         setSlots(data);
       } catch (error) {
         console.error("Failed to load slots:", error);
-        alert("Unable to load your slots. Please try again.");
+        showError(null, "Unable to load your slots. Please try again.", "Couldn’t load your slots");
       } finally {
         setLoaded(true);
       }
@@ -1723,8 +1862,78 @@ export default function FarMeDashboard() {
     let name = base;
     let n = 2;
     while (slots.some((s) => s.name.toLowerCase() === name.toLowerCase()))
-      name = `${base} (${n++})`;
+      name = withSuffix(base, n++);
     return name;
+  };
+
+  // ---- renaming from a card: nothing is saved until the person confirms ----
+  const renameSlot = editingId ? slots.find((x) => x.id === editingId) : null;
+  const renameChanged =
+    !!renameSlot && renameText.trim() !== "" && renameText.trim() !== renameSlot.name;
+  const focusRename = () =>
+    setTimeout(() => document.getElementById(`rename-${editingId}`)?.focus(), 0);
+  const startRename = (s) => {
+    askingRef.current = false;
+    setRenameAsk(null);
+    setRenameText(s.name);
+    setEditingId(s.id);
+  };
+  const endRename = () => {
+    askingRef.current = false;
+    setRenameAsk(null);
+    setEditingId(null);
+  };
+  const askRename = (kind) => {
+    askingRef.current = true;
+    setRenameAsk(kind);
+  };
+  const keepEditing = () => {
+    askingRef.current = false;
+    setRenameAsk(null);
+    focusRename();
+  };
+  const onRenameChange = (e) => {
+    const { value, hit } = checkName(e.target.value);
+    setRenameText(value);
+    if (hit) {
+      askingRef.current = true;
+      setRenameLimit(hit);
+    }
+  };
+  const closeRenameLimit = () => {
+    askingRef.current = false;
+    setRenameLimit(null);
+    focusRename();
+  };
+  const saveRename = async () => {
+    const s = renameSlot;
+    if (!s || renameBusy) return;
+    const base = renameText.trim();
+    let name = base;
+    let n = 2;
+    while (slots.some((x) => x.id !== s.id && x.name.toLowerCase() === name.toLowerCase()))
+      name = withSuffix(base, n++);
+    setRenameBusy(true);
+    try {
+      await updateSlotAPI(s.id, {
+        name,
+        soil: s.soil,
+        widthM: s.widthM,
+        lengthM: s.lengthM,
+        location: s.location,
+        ...(s.lat != null ? { lat: s.lat } : {}),
+        ...(s.lon != null ? { lon: s.lon } : {}),
+        ...(s.place != null ? { place: s.place } : {}),
+      });
+      setSlots(await getSlots());
+      endRename();
+      setUpdated({ name });
+    } catch (error) {
+      console.error("Failed to rename slot:", error);
+      showError(error, "Unable to rename slot. Please try again.", "Couldn’t rename the slot");
+    } finally {
+      setRenameBusy(false);
+    }
   };
 
   
@@ -1742,7 +1951,7 @@ export default function FarMeDashboard() {
       setFlow({ step: "success", id: savedSlot.id });
     } catch (error) {
       console.error("Failed to create slot:", error);
-      alert(error.message || "Unable to create slot. Please try again.");
+      showError(error, "Unable to create slot. Please try again.", "Couldn’t create the slot");
     }
   };
 
@@ -1777,7 +1986,16 @@ export default function FarMeDashboard() {
     const here = plantMap.get(`${cell.row}-${cell.col}`);
 
     if (tool === "trowel") return trowelClick(cell, here);
-    if (!brush || here) return;
+    if (!brush) return;
+    // a crop is chosen and this square already has a plant: say so instead of doing nothing
+    if (here) {
+      return setNotice({
+        title: "That square is taken",
+        lines: ["Something is already planted there.", "Pick another square, or use the trowel to move it."],
+      });
+    }
+    if (plantingRef.current) return;
+    plantingRef.current = true;
 
     try {
       const newPlant = await createPlantAPI(slot.id, {
@@ -1793,7 +2011,9 @@ export default function FarMeDashboard() {
     }));
   } catch (error) {
     console.error("Failed to plant crop:", error);
-    alert(error.message || "Unable to plant crop. Please try again.");
+    showError(error, "Unable to plant crop. Please try again.", "Couldn’t plant that");
+  } finally {
+    plantingRef.current = false;
   }
 };
 
@@ -1801,6 +2021,8 @@ export default function FarMeDashboard() {
   // then move them together, harvest the ready ones, or throw them away (buttons in the side panel)
   const trowelClick = (cell, here) => {
     if (carryPlants.length) return placeGroup(cell);
+    // plants are selected and you click an empty square: move the selection there (no need to press Move first)
+    if (!here && pickedPlants.length) return placeGroup(cell, pickedPlants);
     if (!here) return;
     setPicked((ids) =>
       ids.includes(here.id) ? ids.filter((id) => id !== here.id) : [...ids, here.id],
@@ -1808,61 +2030,63 @@ export default function FarMeDashboard() {
     setToolMsg("");
   };
 
-  const placeGroup = async (cell) => {
-    const group = [...carryPlants].sort(
+  const placeGroup = async (cell, plants = carryPlants) => {
+    const group = [...plants].sort(
       (a, b) => a.row - b.row || a.col - b.col
     );
 
     if (!group.length) return;
 
-    const dr = cell.row - group[0].row;
-    const dc = cell.col - group[0].col;
+    // empty rows and columns between the selected plants are squeezed out, so gaps never block the move.
+    // each plant keeps its order and neighbours; the top left plant lands on the square you clicked.
+    const rank = (values) => new Map([...new Set(values)].sort((a, b) => a - b).map((v, i) => [v, i]));
+    const rowRank = rank(group.map((p) => p.row));
+    const colRank = rank(group.map((p) => p.col));
+    const target = (p) => ({
+      row: cell.row + rowRank.get(p.row) - rowRank.get(group[0].row),
+      col: cell.col + colRank.get(p.col) - colRank.get(group[0].col),
+    });
 
-    if (dr === 0 && dc === 0) {
+    // clicking so that nothing changes puts them back where they were
+    if (group.every((p) => target(p).row === p.row && target(p).col === p.col)) {
       setCarry([]);
       return setToolMsg("Put back where they were.");
     }
 
     const ids = new Set(group.map((p) => p.id));
 
-    const fits = group.every((p) => {
-      const r = p.row + dr;
-      const c = p.col + dc;
-
+    let taken = 0;
+    let outside = 0;
+    group.forEach((p) => {
+      const { row: r, col: c } = target(p);
       if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) {
-        return false;
+        outside++;
+        return;
       }
-
       const other = plantMap.get(`${r}-${c}`);
-      return !other || ids.has(other.id);
+      if (other && !ids.has(other.id)) taken++;
     });
 
-    if (!fits) {
-      return setToolMsg(
-        "They don't fit there. Some squares are taken or outside the plot, so try another spot."
-      );
+    if (taken || outside) {
+      return setBlocked({ taken, outside });
     }
 
     try {
       await Promise.all(
         group.map((p) =>
-          updatePlantAPI(p.id, {
-            row: p.row + dr,
-            col: p.col + dc,
-          })
+          updatePlantAPI(p.id, target(p))
         )
       );
 
       updateSlot(slot.id, (s) => ({
         ...s,
         plants: s.plants.map((p) =>
-          ids.has(p.id)
-            ? { ...p, row: p.row + dr, col: p.col + dc }
-            : p
+          ids.has(p.id) ? { ...p, ...target(p) } : p
         ),
       }));
 
       setCarry([]);
+      setPicked([]);
 
       setToolMsg(
         group.length === 1
@@ -1871,7 +2095,7 @@ export default function FarMeDashboard() {
       );
     } catch (error) {
       console.error("Failed to move plants:", error);
-      alert(error.message || "Unable to move plants. Please try again.");
+      showError(error, "Unable to move plants. Please try again.", "Couldn’t move the plants");
     }
   };
   
@@ -1913,7 +2137,7 @@ export default function FarMeDashboard() {
       setPicked((c) => c.filter((id) => !ids.includes(id)));
     } catch (error) {
      console.error("Failed to remove plants:", error);
-      alert(error.message || "Unable to remove plants. Please try again.");
+      showError(error, "Unable to remove plants. Please try again.", "Couldn’t remove the plants");
     }
   };
 
@@ -1989,7 +2213,7 @@ export default function FarMeDashboard() {
       );
     } catch (error) {
       console.error("Failed to harvest plants:", error);
-      alert(error.message || "Unable to harvest plants. Please try again.");
+      showError(error, "Unable to harvest plants. Please try again.", "Couldn’t harvest");
     }
   };
 
@@ -2008,7 +2232,7 @@ export default function FarMeDashboard() {
       setToDelete(null);
     } catch (error) {
       console.error("Failed to delete slot:", error);
-      alert(error.message || "Unable to delete slot. Please try again.");
+      showError(error, "Unable to delete slot. Please try again.", "Couldn’t delete the slot");
     }
   };
 
@@ -2097,7 +2321,7 @@ export default function FarMeDashboard() {
       }));
     } catch (error) {
       console.error("Failed to record watering:", error);
-      alert(error.message || "Unable to record watering. Please try again.");
+      showError(error, "Unable to record watering. Please try again.", "Couldn’t record watering");
     }
   };
 
@@ -2107,7 +2331,7 @@ export default function FarMeDashboard() {
     let name = data.name;
     let n = 2;
     while (slots.some((x) => x.id !== slot.id && x.name.toLowerCase() === name.toLowerCase()))
-      name = `${data.name} (${n++})`;
+      name = withSuffix(data.name, n++);
     const next = { ...data, name };
     const changes = [];
     if (next.name !== slot.name) changes.push(`Name: ${slot.name} → ${next.name}`);
@@ -2171,7 +2395,7 @@ export default function FarMeDashboard() {
       setPendingEdit(null);
       setShowEdit(false);
 
-      alert("Farm slot updated successfully!");
+      setUpdated({ name: data.name });
     } catch (error) {
       console.error("Failed to update slot:", error);
 
@@ -2182,7 +2406,7 @@ export default function FarMeDashboard() {
         console.error("Failed to refresh slots:", refreshError);
       }
 
-      alert(error.message || "Unable to update slot. Please try again.");
+      showError(error, "Unable to update slot. Please try again.", "Couldn’t update the slot");
     }
   };
 
@@ -2352,8 +2576,31 @@ export default function FarMeDashboard() {
             )}
           </div>
 
-          {!slot && slots.length === 0 && emptyState}
-          {!slot && slots.length > 0 && (
+          {!slot && !ready && (
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}
+              aria-busy="true"
+            >
+              <span className="sr-only">Loading your fields</span>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  aria-hidden="true"
+                  className="bg-white border-[3px] border-[#202808] rounded-xl overflow-hidden"
+                >
+                  <span className="fm-bone fm-bone--thumb" />
+                  <div className="p-3 flex flex-col gap-2">
+                    <span className="fm-bone fm-bone--title" />
+                    <span className="fm-bone fm-bone--line" />
+                    <span className="fm-bone fm-bone--line" style={{ width: "55%" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!slot && ready && slots.length === 0 && emptyState}
+          {!slot && ready && slots.length > 0 && (
             <div
               className="grid gap-4"
               style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}
@@ -2378,16 +2625,27 @@ export default function FarMeDashboard() {
                       <div className="flex items-center gap-2">
                         {editingId === s.id ? (
                           <input
+                            id={`rename-${s.id}`}
                             autoFocus
-                            defaultValue={s.name}
+                            value={renameText}
+                            onChange={onRenameChange}
                             aria-label="Slot name"
                             className={`flex-1 min-w-0 border-[3px] border-[#202808] rounded-lg px-2 py-1`}
-                            onBlur={(e) => {
-                              const v = e.target.value.trim();
-                              updateSlot(s.id, (x) => ({ ...x, name: v || x.name }));
-                              setEditingId(null);
+                            onBlur={() => {
+                              if (askingRef.current) return; // a dialog opened over it
+                              if (!renameChanged) return endRename();
+                              askRename("leave");
                             }}
-                            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (!renameChanged) return endRename();
+                                askRename("save");
+                              } else if (e.key === "Escape") {
+                                if (!renameChanged) return endRename();
+                                askRename("leave");
+                              }
+                            }}
                           />
                         ) : (
                           <>
@@ -2395,7 +2653,7 @@ export default function FarMeDashboard() {
                               {s.name}
                             </span>
                             <button
-                              onClick={() => setEditingId(s.id)}
+                              onClick={() => startRename(s)}
                               aria-label={`Rename ${s.name}`}
                               className={`w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#DEC59E]`}
                             >
@@ -2626,9 +2884,9 @@ export default function FarMeDashboard() {
                     <p className="text-sm font-bold mb-3">
                       {toolMsg ||
                         (carryPlants.length > 0
-                          ? `${carryPlants.length} plant${carryPlants.length === 1 ? " is" : "s are"} on the trowel. Click a square to put ${carryPlants.length === 1 ? "it" : "them"} down. The top left plant lands where you click.`
+                          ? `${carryPlants.length} plant${carryPlants.length === 1 ? " is" : "s are"} on the trowel. Click a square to put ${carryPlants.length === 1 ? "it" : "them"} down. The top left plant lands where you click, and empty gaps between them are squeezed out.`
                           : picked.length > 0
-                            ? `${picked.length} selected. Drag again for a new selection, hold Shift to add, or click a plant to add or remove it.${pickedReady.length < picked.length ? " Only ready plants can be harvested." : ""}`
+                            ? `${picked.length} selected. Drag again for a new selection, hold Shift to add, or click a plant to add or remove it. Click an empty square to move them there.${pickedReady.length < picked.length ? " Only ready plants can be harvested." : ""}`
                             : "Drag across the grid to select a group, or click plants one by one. Then move, harvest or throw them away.")}
                     </p>
                   )}
@@ -2768,6 +3026,68 @@ export default function FarMeDashboard() {
           </div>
         </Modal>
       )}
+      {renameAsk && renameSlot && (
+        <Modal
+          title={renameAsk === "leave" ? "Unsaved changes" : "Save these changes?"}
+          onClose={keepEditing}
+        >
+          <div className={renameAsk === "leave" ? "flex items-center gap-3 mb-4" : "mb-4"}>
+            {renameAsk === "leave" && (
+              <Img src={sproutShocked} alt="" w={72} h={72} label="sprout" />
+            )}
+            <div className="min-w-0">
+              {renameAsk === "leave" && (
+                <p className="mb-2">You changed the name but haven’t saved it yet.</p>
+              )}
+              <ul className="list-disc pl-5 flex flex-col gap-1">
+                <li className="break-words">
+                  Name: {renameSlot.name} → {renameText.trim()}
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="fm-modal__actions">
+            {renameAsk === "leave" && (
+              <button type="button" className="fm-btn fm-btn--light" onClick={endRename}>
+                Discard
+              </button>
+            )}
+            <button type="button" className="fm-btn fm-btn--light" onClick={keepEditing}>
+              Keep editing
+            </button>
+            <button
+              type="button"
+              className="fm-btn fm-btn--primary"
+              onClick={saveRename}
+              disabled={renameBusy}
+              autoFocus
+            >
+              {renameBusy ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {renameLimit && (
+        <LimitModal title={renameLimit.title} lines={renameLimit.lines} onClose={closeRenameLimit} />
+      )}
+      {updated && (
+        <Modal title="Slot updated successfully!" onClose={() => setUpdated(null)}>
+          <div className="flex flex-col gap-4">
+            <div className="flex justify-center">
+              <Img src={sproutHappy} alt="" w={88} h={88} label="sprout" />
+            </div>
+            <p className="text-center break-words">“{updated.name}” has been updated.</p>
+            <button
+              type="button"
+              onClick={() => setUpdated(null)}
+              className="fm-btn fm-btn--primary"
+              autoFocus
+            >
+              Got it
+            </button>
+          </div>
+        </Modal>
+      )}
       {confirmInfo && (
         <ConfirmModal
           title={confirmInfo.title}
@@ -2777,6 +3097,41 @@ export default function FarMeDashboard() {
           onConfirm={runConfirm}
           onClose={() => setConfirm(null)}
         />
+      )}
+      {notice && <LimitModal title={notice.title} lines={notice.lines} onClose={() => setNotice(null)} />}
+      {blocked && (
+        <Modal title="Those squares are taken" onClose={() => setBlocked(null)}>
+          <div className="flex flex-col gap-4">
+            <p>
+              {blocked.taken > 0 &&
+                `${blocked.taken} square${blocked.taken === 1 ? " is" : "s are"} already planted. `}
+              {blocked.outside > 0 &&
+                `${blocked.outside} plant${blocked.outside === 1 ? " would" : "s would"} land outside the plot. `}
+              Nothing was moved. Click a different spot to try again.
+            </p>
+            <div className="fm-modal__actions">
+              <button
+                type="button"
+                className="fm-btn fm-btn--light"
+                onClick={() => {
+                  setBlocked(null);
+                  setCarry([]);
+                  setPicked([]);
+                }}
+              >
+                Cancel move
+              </button>
+              <button
+                type="button"
+                className="fm-btn fm-btn--primary"
+                onClick={() => setBlocked(null)}
+                autoFocus
+              >
+                Try another spot
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {harvesting && slot && (
         <HarvestModal
