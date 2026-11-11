@@ -678,6 +678,9 @@ export function ChatHead({ context }) {
   const [open, setOpen] = useState(!!saved.open);
   const [expanded, setExpanded] = useState(false); // big chat window (tablet and up; phones are always full screen)
   const [messages, setMessages] = useState(saved.messages || []);
+  const [conversationId, setConversationId] = useState(
+  saved.conversationId || null
+  );
   const [askClear, setAskClear] = useState(false);
   const [pos, setPos] = useState(saved.pos || { right: 16, bottom: 16 }); // distance from the window's right / bottom edge
   const [text, setText] = useState("");
@@ -689,11 +692,19 @@ export function ChatHead({ context }) {
   // save the chat whenever it changes
   useEffect(() => {
     try {
-      localStorage.setItem(CHAT_KEY, JSON.stringify({ open, pos, messages: messages.slice(-50) }));
+        localStorage.setItem(
+        CHAT_KEY,
+        JSON.stringify({
+          open,
+          pos,
+          messages: messages.slice(-50),
+          conversationId,
+        })
+      );
     } catch {
       /* storage blocked */
     }
-  }, [open, pos, messages]);
+  }, [open, pos, messages, conversationId]);
 
   // keep the bubble inside the window when it gets resized or rotated
   useEffect(() => {
@@ -752,25 +763,55 @@ export function ChatHead({ context }) {
 
   // send a message, then add the bot's reply
   // todo(backend): sendChat posts the last 20 messages + `context` to CHAT_ENDPOINT (POST /chat) and expects { reply }. see farmeApi.js.
+  
   const send = async (raw) => {
     const content = raw.trim();
+
     if (!content || busy) return;
-    const next = [...messages, { id: crypto.randomUUID(), role: "user", text: content }];
+
+    const next = [
+      ...messages,
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        text: content,
+      },
+    ];
+
     setMessages(next);
     setText("");
     setBusy(true);
-    let reply;
+
     try {
-      reply = await sendChat({
-        messages: next.slice(-20).map((m) => ({ role: m.role, content: m.text })),
-        context,
+      const result = await sendChat({
+        message: content,
+        conversationId,
       });
-    } catch {
-      reply = "Sorry, I couldn't reach the server. Please try again in a bit.";
+
+      setConversationId(result.conversationId);
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: result.response,
+        },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: error.message || "Sorry, I couldn't reach the server. Please try again in a bit.",
+        },
+      ]);
+    } finally {
+      setBusy(false);
     }
-    setMessages((m) => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply }]);
-    setBusy(false);
   };
+
 
   // desktop window: opens above the bubble, or below it when the bubble is in the top half of the screen
   const upper = pos.bottom > window.innerHeight / 2;
@@ -892,6 +933,7 @@ export function ChatHead({ context }) {
           top
           onConfirm={() => {
             setMessages([]);
+            setConversationId(null);
             setAskClear(false);
           }}
           onClose={() => setAskClear(false)}
