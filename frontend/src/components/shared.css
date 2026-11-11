@@ -108,13 +108,17 @@
 .fm-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000; /* above the chat bubble (30) and chat window (31) so the tint covers them too */
+  z-index: 1000; /* below the chat bubble (1001) and chat window (1002), so the chat stays in front of the tint */
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
   background: rgba(32, 40, 8, 0.62);
   animation: fm-fade 0.15s ease-out;
+}
+/* a popup opened from the chat itself (like "Clear chat?") must sit above the chat window */
+.fm-modal-backdrop--top {
+  z-index: 1100;
 }
 .fm-modal {
   display: flex;
@@ -502,10 +506,11 @@
 }
 
 /* ---------- chat bubble + window ---------- */
+/* z-index sits above the modal backdrop (1000) so the chat stays in front of popups */
 
 .fm-chat-bubble {
   position: fixed;
-  z-index: 30;
+  z-index: 1001;
   width: 64px;
   height: 64px;
   padding: 0;
@@ -543,7 +548,7 @@
 
 .fm-chat-panel {
   position: fixed;
-  z-index: 31;
+  z-index: 1002;
   display: flex;
   flex-direction: column;
   width: 360px;
@@ -731,13 +736,6 @@
 }
 .fm-dropdown__option.is-selected {
   font-weight: 800;
-}
-
-/* while any popup is open the chat bubble and window sit under the tint, whatever z-index they have */
-body:has(.fm-modal-backdrop) .fm-chat-bubble,
-body:has(.fm-modal-backdrop) .fm-chat-panel {
-  z-index: 1;
-  pointer-events: none;
 }
 
 /* ---------- calendar (<DatePicker /> in shared.jsx) ---------- */
