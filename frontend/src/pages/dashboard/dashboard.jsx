@@ -1252,9 +1252,22 @@ function SlotDetailModal({ slot, wx, onPick, onClose }) {
 }
 
 // the notification bell in the header + its dropdown (watering and harvest reminders).
-function ReminderBell({ notifs, onRead, onReadAll, onDelete, onDeleteAll, onOpen }) {
-  const [open, setOpen] = useState(false);
-  const unread = notifs.filter((n) => !n.read).length;
+function ReminderBell({ notifs, loading, onRead, onReadAll, onDelete, onDeleteAll, onOpen }) {
+  // the Mailbox on the home page links to /dashboard#notifications: open the list when the page is reached that way
+  const wantsMail = () => window.location.hash === "#notifications";
+  const [open, setOpen] = useState(wantsMail);
+  useEffect(() => {
+    const check = () => {
+      if (!wantsMail()) return;
+      setOpen(true);
+      // drop the hash so a refresh doesn't pop the list open again
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    };
+    check();
+    window.addEventListener("hashchange", check);
+    return () => window.removeEventListener("hashchange", check);
+  }, []);
+  const unread = loading ? 0 : notifs.filter((n) => !n.read).length;
   const small = "!min-h-[34px] !px-2 !text-xs flex items-center gap-1";
   const tiny = "!min-h-[32px] !w-[32px] !px-0 flex items-center justify-center";
   return (
@@ -1278,7 +1291,7 @@ function ReminderBell({ notifs, onRead, onReadAll, onDelete, onDeleteAll, onOpen
         >
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="font-display font-bold">Notifications</p>
-            {notifs.length > 0 && (
+            {!loading && notifs.length > 0 && (
               <div className="flex gap-2">
                 <button
                   onClick={onReadAll}
@@ -1293,14 +1306,25 @@ function ReminderBell({ notifs, onRead, onReadAll, onDelete, onDeleteAll, onOpen
               </div>
             )}
           </div>
-          {notifs.length === 0 && (
+          {loading && (
+            <div className="flex flex-col gap-2" aria-busy="true">
+              <span className="sr-only">Loading your notifications</span>
+              {[0, 1, 2].map((i) => (
+                <div key={i} aria-hidden="true" className="fm-panel p-2 flex flex-col gap-2">
+                  <span className="fm-bone fm-bone--title" />
+                  <span className="fm-bone fm-bone--line" />
+                </div>
+              ))}
+            </div>
+          )}
+          {!loading && notifs.length === 0 && (
             <p className="text-sm">
               You're all caught up. Watering and harvest reminders show up here once you plant
               something.
             </p>
           )}
           <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
-            {notifs.map((n) => (
+            {!loading && notifs.map((n) => (
               <div
                 key={n.id}
                 className={`fm-panel p-2 text-sm flex items-start gap-2 ${n.read ? "opacity-60" : ""} ${n.tone === "warn" && !n.read ? "!border-[#8A3A28]" : ""}`}
@@ -1715,13 +1739,13 @@ export default function FarMeDashboard() {
   // state: slots = all saved fields, loaded = the db finished loading
   const [slots, setSlots] = useState([]);
   const [loaded, setLoaded] = useState(false);
-  // keep the sprout on screen for at least this long, so a fast load doesn't just flash it
-  const [minDone, setMinDone] = useState(false);
+  // the loading skeleton only appears if the load is actually slow (over 150 ms), so a quick load never flashes it
+  const [slow, setSlow] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setMinDone(true), 600);
+    const t = setTimeout(() => setSlow(true), 150);
     return () => clearTimeout(t);
   }, []);
-  const ready = loaded && minDone;
+  const ready = loaded;
   const [openId, setOpenId] = useState(null);
   const [editingId, setEditingId] = useState(null); // the card whose name is being edited
   const [renameText, setRenameText] = useState(""); // what is typed in that name box
@@ -2511,6 +2535,7 @@ export default function FarMeDashboard() {
           </h1>
           <ReminderBell
             notifs={notifs}
+            loading={!loaded || !nLoaded}
             onRead={markRead}
             onReadAll={markAllRead}
             onDelete={(id) => setConfirm({ type: "notif", id })}
@@ -2576,7 +2601,7 @@ export default function FarMeDashboard() {
             )}
           </div>
 
-          {!slot && !ready && (
+          {!slot && !ready && slow && (
             <div
               className="grid gap-4"
               style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}
