@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useId } from "react";
 import {
   Search,
   SlidersHorizontal,
@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   Trash2,
   ChevronRight,
+  ChevronDown,
+  Info,
   ListChecks,
   Pencil,
   LayoutGrid,
@@ -164,6 +166,19 @@ function useWx(lat, lon) {
   return wx;
 }
 
+// true on phone screens (below 640px). the filter uses it to show growth stages as tick boxes.
+function usePhone() {
+  const q = "(max-width: 639px)";
+  const [phone, setPhone] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(q);
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return phone;
+}
+
 // true on laptop screens and up. below that, the crop details open in a dialog instead of a side panel.
 function useWide() {
   const q = "(min-width: 1024px)";
@@ -315,10 +330,10 @@ function NoteModal({ slots, start, onSave, onClose }) {
   );
 }
 
-const TYPE_OPTIONS = [
-  { value: "all", label: "All crops" },
-  { value: "vegetable", label: "Vegetables" },
-  { value: "fruit", label: "Fruits" },
+// the crop picker groups the crops by type, so "Vegetables" ticks every vegetable at once
+const CROP_GROUPS = [
+  ["vegetable", "Vegetables"],
+  ["fruit", "Fruits"],
 ];
 
 const SORT_OPTIONS = [
@@ -329,7 +344,7 @@ const SORT_OPTIONS = [
   { value: "harvest-late", label: "Harvest: latest first" },
 ];
 const NO_FILTER = {
-  type: "all",
+  crops: [], // crop keys to show. empty = every crop
   field: "all",
   plantedFrom: "",
   plantedTo: "",
@@ -357,6 +372,7 @@ function plantPasses(p, f) {
   const crop = cropByKey(p.cropKey);
   if (!crop) return false;
   return (
+    (f.crops.length === 0 || f.crops.includes(p.cropKey)) &&
     inRange(p.plantedOn, f.plantedFrom, f.plantedTo) &&
     inRange(addDays(p.plantedOn, crop.maturity), f.harvestFrom, f.harvestTo) &&
     (f.stages.length === 0 || f.stages.includes(stageOf(daysBetween(p.plantedOn, todayIso()), crop.maturity)))
@@ -393,13 +409,13 @@ function DateRange({ id, label, hint, from, to, onChange }) {
     <fieldset className="flex flex-col gap-2">
       <legend className="font-bold mb-1">{label}</legend>
       <div className="grid grid-cols-2 gap-2">
-        <div>
+        <div className="fm-daterange__field min-w-0">
           <label htmlFor={`${id}-from`} className="block text-sm mb-1">
             From
           </label>
           <DatePicker id={`${id}-from`} value={from} onChange={(v) => onChange({ from: v, to })} />
         </div>
-        <div>
+        <div className="fm-daterange__field min-w-0">
           <label htmlFor={`${id}-to`} className="block text-sm mb-1">
             To
           </label>
@@ -420,18 +436,153 @@ function DateRange({ id, label, hint, from, to, onChange }) {
   );
 }
 
+// one tick box with a label, used by the filter
+function CheckRow({ checked, onChange, children }) {
+  return (
+    <label className={`fm-checkrow${checked ? " is-on" : ""}`}>
+      <input type="checkbox" className="fm-check" checked={checked} onChange={onChange} />
+      {children}
+    </label>
+  );
+}
+
+// a tick box that can also show "some are ticked" (used for the Vegetables / Fruits headers)
+function GroupCheck({ checked, some, onChange }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = some && !checked;
+  }, [some, checked]);
+  return <input ref={ref} type="checkbox" className="fm-check" checked={checked} onChange={onChange} />;
+}
+
+// dropdown of crops with tick boxes, grouped by type. ticking a group header ticks all its crops.
+function CropPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const toggle = (k) => onChange(value.includes(k) ? value.filter((x) => x !== k) : [...value, k]);
+  const summary =
+    value.length === 0
+      ? "All crops"
+      : value.length <= 2
+        ? value.map((k) => cropByKey(k)?.name).filter(Boolean).join(", ")
+        : `${value.length} crops selected`;
+  return (
+    <div>
+      <button
+        type="button"
+        id="f-crops"
+        aria-expanded={open}
+        aria-controls="f-crops-panel"
+        onClick={() => setOpen((o) => !o)}
+        className="fm-input fm-dropbtn"
+      >
+        <span className="truncate">{summary}</span>
+        <ChevronDown size={18} aria-hidden="true" className={open ? "rotate-180" : ""} />
+      </button>
+      {open && (
+        <div id="f-crops-panel" className="fm-droppanel">
+          {CROP_GROUPS.map(([type, label]) => {
+            const list = CROPS.filter((c) => c.type === type);
+            if (list.length === 0) return null;
+            const on = list.filter((c) => value.includes(c.key)).length;
+            const all = on === list.length;
+            return (
+              <div key={type} role="group" aria-label={label} className="flex flex-col gap-2">
+                <label className={`fm-checkrow fm-checkrow--head${all ? " is-on" : ""}`}>
+                  <GroupCheck
+                    checked={all}
+                    some={on > 0}
+                    onChange={() =>
+                      onChange(
+                        all
+                          ? value.filter((k) => !list.some((c) => c.key === k))
+                          : [...new Set([...value, ...list.map((c) => c.key)])],
+                      )
+                    }
+                  />
+                  <span className="flex-1">All {label.toLowerCase()}</span>
+                  <span className="text-sm font-normal">
+                    {on}/{list.length}
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {list.map((c) => (
+                    <CheckRow key={c.key} checked={value.includes(c.key)} onChange={() => toggle(c.key)}>
+                      <span className="text-xl leading-none" aria-hidden="true">
+                        {c.emoji}
+                      </span>
+                      <span className="min-w-0 break-words">{c.name}</span>
+                    </CheckRow>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// phone version of the growth stage filter: a dropdown with a tick box for every stage
+function StagePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const toggle = (k) => onChange(value.includes(k) ? value.filter((x) => x !== k) : [...value, k]);
+  const summary =
+    value.length === 0
+      ? "All stages"
+      : value.length <= 2
+        ? value.map((k) => STAGES[k].label).join(", ")
+        : `${value.length} stages selected`;
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="f-stage-panel"
+        aria-labelledby="f-stage-label"
+        onClick={() => setOpen((o) => !o)}
+        className="fm-input fm-dropbtn"
+      >
+        <span className="truncate">{summary}</span>
+        <ChevronDown size={18} aria-hidden="true" className={open ? "rotate-180" : ""} />
+      </button>
+      {open && (
+        <div id="f-stage-panel" className="fm-droppanel">
+          <div className="flex flex-col gap-2">
+            {Object.entries(STAGES).map(([k, s]) => (
+              <CheckRow key={k} checked={value.includes(k)} onChange={() => toggle(k)}>
+                <span className="fm-stagechip__dot" style={{ background: s.color }} aria-hidden="true" />
+                {s.label}
+              </CheckRow>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FilterModal({ value, slots, onApply, onClose }) {
   const [draft, setDraft] = useState(value);
+  const phone = usePhone();
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const toggleIn = (list, k) => (list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
   const fieldOptions = [{ value: "all", label: "All fields" }, ...slots.map((s) => ({ value: s.id, label: s.name }))];
   return (
     <Modal title="Filter" onClose={onClose}>
       <div className="flex flex-col gap-3">
         <div>
-          <label htmlFor="f-type" className="block font-bold mb-1">
-            Crop type
-          </label>
-          <Select id="f-type" value={draft.type} onChange={(type) => set({ type })} options={TYPE_OPTIONS} />
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <label htmlFor="f-crops" className="block font-bold">
+              Crops
+            </label>
+            {draft.crops.length > 0 && (
+              <button type="button" className="underline font-bold text-sm min-h-[44px]" onClick={() => set({ crops: [] })}>
+                Clear crops
+              </button>
+            )}
+          </div>
+          <CropPicker value={draft.crops} onChange={(crops) => set({ crops })} />
         </div>
         <div>
           <label htmlFor="f-field" className="block font-bold mb-1">
@@ -456,22 +607,24 @@ function FilterModal({ value, slots, onApply, onClose }) {
               </button>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(STAGES).map(([k, s]) => (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={draft.stages.includes(k)}
-                onClick={() =>
-                  set({ stages: draft.stages.includes(k) ? draft.stages.filter((x) => x !== k) : [...draft.stages, k] })
-                }
-                className="fm-stagechip"
-              >
-                <span className="fm-stagechip__dot" style={{ background: s.color }} aria-hidden="true" />
-                {s.label}
-              </button>
-            ))}
-          </div>
+          {phone ? (
+            <StagePicker value={draft.stages} onChange={(stages) => set({ stages })} />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(STAGES).map(([k, s]) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={draft.stages.includes(k)}
+                  onClick={() => set({ stages: toggleIn(draft.stages, k) })}
+                  className="fm-stagechip"
+                >
+                  <span className="fm-stagechip__dot" style={{ background: s.color }} aria-hidden="true" />
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="text-xs mt-1">Pick one or more. Only plants in those stages are shown.</p>
         </div>
         <DateRange
@@ -891,15 +1044,62 @@ function PlantCard({ plant, on, onSelect, onRemove }) {
 // one field: its header (size, soil, place, weather) and a tile for every crop planted in it
 function FieldCard({ slot, tiles, selected, onSelect }) {
   const wx = useWx(slot.lat, slot.lon);
+  const [showInfo, setShowInfo] = useState(false); // the size / soil / place details sit behind the small (i) icon
+  const infoRoot = useRef(null);
+  const infoId = useId();
+  // closes on a tap outside or Escape, like the dashboard
+  useEffect(() => {
+    if (!showInfo) return;
+    const away = (e) => infoRoot.current && !infoRoot.current.contains(e.target) && setShowInfo(false);
+    const esc = (e) => e.key === "Escape" && setShowInfo(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [showInfo]);
   return (
-    <section className="fm-chapter" aria-label={slot.name}>
+    <section className={`fm-chapter relative${showInfo ? " z-30" : ""}`} aria-label={slot.name}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <p className="fm-chapter__label" aria-hidden="true" />
-          <h2 className="fm-chapter__title font-display text-2xl font-bold truncate">{slot.name}</h2>
-          <p className="text-sm break-words">
-            {fmt(slot.widthM)} × {fmt(slot.lengthM)} m · {slot.soil} soil · {slot.place || slot.location}
-          </p>
+          <div className="min-w-0" ref={infoRoot}>
+            <div className="flex items-start gap-1">
+              <h2 className="fm-chapter__title font-display text-2xl font-bold truncate">{slot.name}</h2>
+              <button
+                type="button"
+                onClick={() => setShowInfo((o) => !o)}
+                aria-expanded={showInfo}
+                aria-controls={infoId}
+                aria-label="Field details"
+                className="relative shrink-0 p-0.5 text-[#33432B] before:absolute before:-inset-2 before:content-['']"
+              >
+                <Info size={15} aria-hidden="true" />
+              </button>
+            </div>
+            {showInfo && (
+              <div
+                id={infoId}
+                className="fm-card absolute left-0 right-0 mt-2 z-20 max-w-[22rem] p-3"
+              >
+                <div className="bg-[#DEC59E] border-[3px] border-[#202808] rounded-xl p-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                    {[
+                      ["Plot size", `${fmt(slot.widthM)} × ${fmt(slot.lengthM)} m = ${fmt(slot.widthM * slot.lengthM)} m²`],
+                      ["Soil type", slot.soil],
+                      ["Location", slot.place || slot.location || "Not set"],
+                    ].map(([k, v]) => (
+                      <div key={k}>
+                        <p className="font-bold">{k}</p>
+                        <p className="bg-[#FBF6EA] border-2 border-[#202808] rounded-lg px-2 py-1 mt-1 break-words">{v}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <p className="fm-chapter__weather">
           {wx ? `${wx.emoji} ${wx.temp}°C · ${wx.label}` : "Weather unavailable"}
@@ -1364,7 +1564,7 @@ export default function FarMeLibrary() {
   // search matches crop names (local + english) and field names. the date filters and sorting come from the filter dialog.
   const q = query.trim().toLowerCase();
   const narrowed =
-    filter.type !== "all" ||
+    filter.crops.length > 0 ||
     filter.stages.length > 0 ||
     filter.plantedFrom ||
     filter.plantedTo ||
@@ -1378,7 +1578,6 @@ export default function FarMeLibrary() {
           const fieldHit = q && s.name.toLowerCase().includes(q);
           const tiles = cropsIn(filterSlot(s, filter)).filter(
             (t) =>
-              (filter.type === "all" || t.crop.type === filter.type) &&
               (!q || fieldHit || t.crop.name.toLowerCase().includes(q) || t.crop.en.toLowerCase().includes(q)),
           );
           return { slot: s, tiles: sortTiles(tiles, filter.sort) };
@@ -1530,7 +1729,7 @@ export default function FarMeLibrary() {
 
   // only My Fields has a filter now
   const filterCount =
-    (filter.type !== "all") +
+    Boolean(filter.crops.length) +
     (filter.field !== "all") +
     Boolean(filter.plantedFrom || filter.plantedTo) +
     Boolean(filter.harvestFrom || filter.harvestTo) +
