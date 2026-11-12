@@ -14,6 +14,8 @@ from app.models import (
     NotificationState,
     Crop,
     PasswordReset,
+    ChatConversation,
+    ChatMessage
 )
 from app.routers.auth import router as auth_router
 from app.routers.slots import router as slots_router

@@ -516,12 +516,9 @@ export async function fetchRecommendations(ctx) {
 
 
 
-export async function sendChat({ messages, context }) {
-  const latestUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "user")?.content;
 
-  if (!latestUserMessage) {
+export async function sendChat({ message, conversationId = null }) {
+  if (!message?.trim()) {
     throw new Error("No user message provided.");
   }
 
@@ -539,7 +536,8 @@ export async function sendChat({ messages, context }) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        message: latestUserMessage,
+        message: message.trim(),
+        conversation_id: conversationId,
       }),
       signal: controller.signal,
     });
@@ -550,7 +548,10 @@ export async function sendChat({ messages, context }) {
       throw new Error(data.detail || "Failed to get AI response.");
     }
 
-    return data.response;
+    return {
+      response: data.response,
+      conversationId: data.conversation_id,
+    };
   } catch (error) {
     if (error.name === "AbortError") {
       throw new Error("The AI response took too long. Please try again.");
@@ -561,6 +562,7 @@ export async function sendChat({ messages, context }) {
     clearTimeout(timeoutId);
   }
 }
+
 
 
 

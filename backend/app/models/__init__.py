@@ -9,3 +9,4 @@ from app.models.dashboard import (
 )
 from app.models.crop import Crop
 from app.models.password_reset import PasswordReset
+from app.models.chat import ChatConversation, ChatMessage
