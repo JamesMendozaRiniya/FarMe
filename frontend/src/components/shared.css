@@ -588,6 +588,38 @@
   background: var(--kombu);
   color: var(--paper);
 }
+.fm-msg--bot {
+  white-space: normal;
+  line-height: 1.5;
+}
+.fm-msg--bot p {
+  margin: 0 0 0.5rem;
+}
+.fm-msg--bot p:last-child {
+  margin-bottom: 0;
+}
+.fm-msg--bot ul {
+  list-style-type: disc !important;
+  list-style-position: outside;
+  margin: 0.5rem 0;
+  padding-left: 1.5rem !important;
+}
+.fm-msg--bot ol {
+  list-style-type: decimal !important;
+  list-style-position: outside;
+  margin: 0.5rem 0;
+  padding-left: 1.5rem !important;
+}
+.fm-msg--bot li {
+  display: list-item;
+  margin-bottom: 0.35rem;
+}
+.fm-msg--bot li:last-child {
+  margin-bottom: 0;
+}
+.fm-msg--bot strong {
+  font-weight: 800;
+}
 .fm-chat-chips {
   display: flex;
   flex-wrap: wrap;

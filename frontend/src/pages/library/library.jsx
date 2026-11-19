@@ -41,6 +41,7 @@ import {
 } from "../../components/shared";
 
 import { CROPS, cropByKey } from "../../data/crops";
+import { buildChatContext } from "../../utils/chatContext";
 
 import "./library.css";
 import dashboardEmpty from "../../assets/dashboard-empty-state.png";
@@ -162,6 +163,17 @@ function useWx(lat, lon) {
     };
   }, [lat, lon]);
   return wx;
+}
+
+function LibraryChat({ slots, selSlot, selected }) {
+  const wx = useWx(selSlot?.lat, selSlot?.lon);
+  const chat = buildChatContext({ page: "library", slot: selSlot, slots, weather: wx });
+  const context = {
+    ...chat.context,
+    selectedCrop: selected?.crop,
+    selectedPlant: selected?.plant,
+  };
+  return <ChatHead context={context} suggestions={chat.suggestions} hint={chat.hint} />;
 }
 
 function usePhone() {
@@ -2108,7 +2120,11 @@ export default function FarMeLibrary() {
         </div>
       </div>
 
-      <ChatHead context={{ page: "library", field: selSlot?.name, crop: selInfo?.crop.key, plant: selPlant ? spotOf(selSlot, selPlant.id) : undefined }} />
+      <LibraryChat
+        slots={slots}
+        selSlot={selSlot}
+        selected={selInfo ? { crop: selInfo.crop.key, plant: selPlant ? spotOf(selSlot, selPlant.id) : undefined } : null}
+      />
 
       {tab === "fields" && !wide && detail && (
         <Modal title={selPlant ? `${selInfo.crop.name} · ${spotOf(selSlot, selPlant.id)}` : selInfo.crop.name} onClose={() => setSelected(null)} wide>

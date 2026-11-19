@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from google import genai
 from google.genai import types
@@ -13,7 +14,8 @@ MODEL_NAME = settings.GEMINI_MODEL
 
 async def generate_ai_response(
     user_message: str,
-    history: list[dict] | None = None
+    history: list[dict] | None = None,
+    context: dict | None = None
 ) -> str:
 
     if not settings.GEMINI_API_KEY:
@@ -56,11 +58,22 @@ async def generate_ai_response(
             )
         )
 
+    context_text = ""
+
+    if context:
+        context_text = (
+            "\n\nFARME FARM AND WEATHER CONTEXT:\n"
+            + json.dumps(context, ensure_ascii=False, indent=2)
+            + "\n\nUse this information when relevant to the user's question. "
+            "Give practical farming suggestions based on the available data. "
+            "Do not invent missing weather or farm information."
+        )
+
     contents.append(
         types.Content(
             role="user",
             parts=[
-                types.Part.from_text(text=user_message)
+                types.Part.from_text(text=f"{user_message}{context_text}")
             ],
         )
     )

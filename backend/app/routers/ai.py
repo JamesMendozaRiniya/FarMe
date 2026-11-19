@@ -20,6 +20,7 @@ router = APIRouter(
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: int | None = Field(default=None, gt=0)
+    context: dict | None = None
 
 
 class ChatResponse(BaseModel):
@@ -76,7 +77,8 @@ async def chat(
 
         response = await generate_ai_response(
             user_message=request.message,
-            history=history
+            history=history,
+            context=request.context
         )
 
         db.add_all([

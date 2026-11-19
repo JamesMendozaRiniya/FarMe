@@ -49,6 +49,7 @@ import {
   DatePicker,
 } from "../../components/shared";
 import { SOILS, CROPS, cropByKey } from "../../data/crops";
+import { buildChatContext } from "../../utils/chatContext";
 
 import dashboardNotif from "../../assets/dashboard-notif.png";
 import dashboardEmpty from "../../assets/dashboard-empty-state.png";
@@ -2415,18 +2416,14 @@ export default function FarMeDashboard() {
     setConfirm(null);
   };
 
-  const chatContext = {
+  const chat = buildChatContext({
     page: "dashboard",
     season: season.key,
-    slot: slot && {
-      name: slot.name,
-      soil: slot.soil,
-      location: slot.place || slot.location,
-      areaM2: Math.round(slot.widthM * slot.lengthM),
-      weather: wx.data,
-      planted: counts,
-    },
-  };
+    slot,
+    slots,
+    weather: wx.data,
+    now,
+  });
 
   const emptyState = (
     <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 py-10">
@@ -2941,7 +2938,7 @@ export default function FarMeDashboard() {
         </section>
       </div>
 
-      <ChatHead context={chatContext} />
+      <ChatHead context={chat.context} suggestions={chat.suggestions} hint={chat.hint} />
 
       {showAdd && (
         <AddSlotModal

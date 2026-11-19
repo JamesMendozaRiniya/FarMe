@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   Menu,
   ChevronsLeft,
@@ -642,9 +643,13 @@ const clampPos = (p) => ({
   bottom: Math.min(Math.max(8, p.bottom), window.innerHeight - BUBBLE - 8),
 });
 
-const SUGGESTIONS = ["What should I plant now?", "How often should I water?"];
+const SUGGESTIONS = [
+  "What should I plant now?",
+  "How often should I water?",
+  "What's the 3-day forecast?",
+];
 
-export function ChatHead({ context }) {
+export function ChatHead({ context, suggestions, hint }) {
   const [saved] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(CHAT_KEY) || "{}");
@@ -756,6 +761,7 @@ export function ChatHead({ context }) {
       const result = await sendChat({
         message: content,
         conversationId,
+        context,
       });
 
       setConversationId(result.conversationId);
@@ -849,8 +855,9 @@ export function ChatHead({ context }) {
                 <p className="fm-msg fm-msg--bot">
                   Hi! Ask me anything about your plants, soil or the weather.
                 </p>
+                {hint && <p className="fm-msg fm-msg--bot">{hint}</p>}
                 <div className="fm-chat-chips">
-                  {SUGGESTIONS.map((s) => (
+                  {(suggestions?.length ? suggestions : SUGGESTIONS).map((s) => (
                     <button key={s} type="button" className="fm-chip" onClick={() => send(s)}>
                       {s}
                     </button>
@@ -859,9 +866,21 @@ export function ChatHead({ context }) {
               </>
             )}
             {messages.map((m) => (
-              <p key={m.id} className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}>
-                {m.text}
-              </p>
+              <div key={m.id} className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}>
+                {m.role === "assistant" ? (
+                  <ReactMarkdown
+                    components={{
+                      ul: ({ children }) => <ul className="fm-chat-list">{children}</ul>,
+                      ol: ({ children }) => <ol className="fm-chat-list fm-chat-list--ordered">{children}</ol>,
+                      li: ({ children }) => <li>{children}</li>,
+                    }}
+                  >
+                    {m.text}
+                  </ReactMarkdown>
+                ) : (
+                  m.text
+                )}
+              </div>
             ))}
             {busy && <p className="fm-msg fm-msg--bot">Typing…</p>}
             <div ref={endRef} />
