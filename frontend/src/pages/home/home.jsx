@@ -3,11 +3,9 @@ import "./home.css";
 import { getUser, getSlots, getNotificationStates } from "../../services/farmeApi";
 import { countUnread } from "../../utils/notifications";
 import { Sidebar, ChatHead } from "../../components/shared";
-
-// your art lives in src/assets/home/
 import barnImg from "../../assets/home/barn.gif";
 import mountainImg from "../../assets/home/mountain.gif";
-import wheelbarrowImg from "../../assets/home/wheelbarrow.gif"; // the hay wagon
+import wheelbarrowImg from "../../assets/home/wheelbarrow.gif"; 
 import treeGif from "../../assets/home/tree.gif";
 import grassGif from "../../assets/home/grass.gif";
 import forkImg from "../../assets/home/fork.png";
@@ -18,11 +16,10 @@ const LIBRARY_HREF = "/library";
 const SETTINGS_HREF = "/settings";
 const MAIL_HREF = "/dashboard#notifications";
 
-// the drawn parts (beds, windmill, mailbox, fence...) are painted to match the png art:
-// soft fills, a light brown line instead of the old dark one, and a highlight + shade on every object.
-const LINE = "#5C4334"; // thin outline for wood and metal things
+
+const LINE = "#5C4334"; 
 const WOOD = "#A8774F";
-const WOOD_L = "#C9975F"; // light edge of a plank
+const WOOD_L = "#C9975F"; 
 const WOOD_D = "#7B5238";
 const SOIL = "#5E3A29";
 const LEAF = "#5DAE3B";
@@ -39,8 +36,7 @@ function Spot({ href, label, hint, children }) {
   );
 }
 
-// the little label under each place. one quiet line: the name, then a lighter note like "Farm · 3 fields".
-// sub = null (or left out) shows only the name, which is also what you see when there is nothing to report.
+
 function Tag({ x, y, text, sub = null }) {
   const w = text.length * 7.4 + (sub ? (sub.length + 2) * 6.6 + 6 : 0) + 24;
   return (
@@ -60,7 +56,7 @@ function Tag({ x, y, text, sub = null }) {
   );
 }
 
-// a round, painted bush: soft shadow, three puffs, a lighter puff on top and two little curls like the tree has
+
 const Bush = ({ x, y, s = 1, c = "#4E9A33", l = "#6DB944", d = "#3C7D28" }) => (
   <g transform={`translate(${x} ${y}) scale(${s})`}>
     <ellipse cx="0" cy="3" rx="26" ry="6" fill="#2F5A1E" opacity="0.22" />
@@ -81,8 +77,7 @@ const Bush = ({ x, y, s = 1, c = "#4E9A33", l = "#6DB944", d = "#3C7D28" }) => (
   </g>
 );
 
-// animated grass tuft (gif). x / y = where the bottom center of the tuft sits. s scales it.
-// the gif is a 480 x 480 square and the tuft sits in its middle, so the box is square and shifted to put the tuft's bottom on y.
+
 const Grass = ({ x, y, s = 1 }) => {
   const size = 56 * s;
   return (
@@ -98,7 +93,7 @@ const Grass = ({ x, y, s = 1 }) => {
   );
 };
 
-// a little white daisy with two leaves, drawn to match the painted style. s = size (1 is the small default).
+
 const Daisy = ({ x, y, s = 1 }) => (
   <g transform={`translate(${x} ${y}) scale(${s})`}>
     <path d="M0 0 V9" stroke={LEAF_D} strokeWidth="1.6" strokeLinecap="round" />
@@ -142,7 +137,7 @@ function Bed({ c, rows, cols, s, delay }) {
   return (
     <g>
       <polygon points={poly([tl, tr, br, bl])} fill={SOIL} stroke="#4A2F21" strokeWidth="2" strokeLinejoin="round" />
-      {/* a lighter band along the back edge, like sunlight on the soil */}
+      {}
       <polygon points={poly([tl, tr, lerp(tr, br, 0.28), lerp(tl, bl, 0.28)])} fill="#7A4C3A" opacity="0.55" />
       {pts.map(([x, y], i) => (
         <g key={i} transform={`translate(${x} ${y})`}>
@@ -152,7 +147,7 @@ function Bed({ c, rows, cols, s, delay }) {
           </g>
         </g>
       ))}
-      {/* front board, then the two side boards, then a light line on top of the front board */}
+      {}
       <polygon points={poly([bl, br, [br[0], br[1] + 13], [bl[0], bl[1] + 13]])} fill={WOOD} stroke={LINE} strokeWidth="2" strokeLinejoin="round" />
       <polygon points={poly([tl, bl, [bl[0] + 7, bl[1] + 13], [tl[0] + 7, tl[1] + 3]])} fill={WOOD_D} stroke={LINE} strokeWidth="1.8" strokeLinejoin="round" />
       <polygon points={poly([tr, br, [br[0] - 7, br[1] + 13], [tr[0] - 7, tr[1] + 3]])} fill={WOOD_D} stroke={LINE} strokeWidth="1.8" strokeLinejoin="round" />
@@ -165,7 +160,7 @@ function Bed({ c, rows, cols, s, delay }) {
   );
 }
 
-// windmill: shaded on the right, light on the left, with a window and a little door
+
 function Windmill({ x, y, sc = 1 }) {
   return (
     <g transform={`translate(${x} ${y}) scale(${sc})`}>
@@ -192,8 +187,7 @@ function Windmill({ x, y, sc = 1 }) {
   );
 }
 
-// fields = how many slots the user has, crops = how many plants are in them, unread = unread notifications.
-// all three are null until they have loaded. a label only shows a note when its number is above 0.
+
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 function Scene({ fields = null, crops = null, unread = null }) {
   const farmSub = fields > 0 ? plural(fields, "field", "fields") : null;
@@ -214,7 +208,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
         </g>
       </defs>
 
-      {/* the sky and the ground reach past the picture, so a screen that is taller than 16:9 is filled with scenery instead of blank space */}
+      {}
       <rect x="-1200" y="-900" width="3200" height="1140" fill="url(#fm-home-sky)" />
       <g className="fm-home__cloud" fill="#FBF6EA" opacity="0.95">
         <path d="M205 62 q0 -17 20 -17 q8 -15 26 -8 q18 -2 20 16 q15 2 13 15 H212 q-9 -2 -7 -6 z" />
@@ -226,9 +220,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
       </g>
       <path d="M380 150 Q520 98 640 116 T800 130 V200 H380 Z" fill="#B4D38A" />
       <path d="M0 170 Q120 128 230 160 T420 150 V200 H0 Z" fill="#A5C77B" />
-      {/* mountains (png, 480 x 480 with the peaks in the middle band). drawn after the pale hills and before the ground,
-          so the ground hides their flat bottoms (the bottoms must end below y 198, where the ground starts). the big one is on the
-          right, a smaller flipped one fills the gap behind the barn. */}
+      {}
       <image
         href={mountainImg}
         x="250"
@@ -256,7 +248,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
       <ellipse cx="120" cy="330" rx="90" ry="22" fill="#9CC460" opacity="0.6" />
       <ellipse cx="640" cy="230" rx="120" ry="18" fill="#9CC460" opacity="0.45" />
 
-      {/* the field fence behind the beds */}
+      {}
       <g>
         <path d="M326 196 L790 184 M326 205 L790 193" stroke={LINE} strokeWidth="6" strokeLinecap="round" />
         <path d="M326 196 L790 184 M326 205 L790 193" stroke={WOOD} strokeWidth="4" strokeLinecap="round" />
@@ -267,7 +259,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
         })}
       </g>
 
-      {/* the dirt path: a darker edge, the dirt, a light middle, and a few pebbles */}
+      {}
       <path d="M158 250 C150 292 262 300 322 340 S404 412 478 456" fill="none" stroke="#C9A06E" strokeWidth="52" strokeLinecap="round" opacity="0.55" />
       <path d="M158 250 C150 292 262 300 322 340 S404 412 478 456" fill="none" stroke="#DEC59E" strokeWidth="42" strokeLinecap="round" />
       <path d="M158 250 C150 292 262 300 322 340 S404 412 478 456" fill="none" stroke="#EBD9B3" strokeWidth="18" strokeLinecap="round" opacity="0.6" />
@@ -277,7 +269,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
         ))}
       </g>
 
-      {/* tree (gif, 480 x 480). big, in the top left corner like your reference. the trunk ends near y 234 */}
+      {}
       <image
         href={treeGif}
         x="-90"
@@ -295,7 +287,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
       >
         <g transform="translate(86 92)">
           <rect x="-20" y="-8" width="214" height="172" fill="transparent" />
-          {/* barn (png, 480 x 480). the barn itself is about 210 wide on screen, its dirt base ends near y 255 */}
+          {}
           <image
             href={barnImg}
             x="-24"
@@ -308,7 +300,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
         <Tag x={172} y={272} text="Farm" sub={farmSub} />
       </Spot>
 
-      {/* hay wagon (png, 480 x 480). parked in front of the barn's left side, wheels on about y 274 */}
+      {}
       <image
         href={wheelbarrowImg}
         x="14"
@@ -348,7 +340,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
 
       <Spot href={SETTINGS_HREF} label="Settings" hint="your profile, email and password">
         <rect x="716" y="170" width="84" height="150" fill="transparent" />
-        {/* wooden crate with a little plant in it */}
+        {}
         <g transform="translate(776 296)" stroke={LINE} strokeWidth="1.8" strokeLinejoin="round">
           <ellipse cx="2" cy="5" rx="24" ry="5" fill="#2F5A1E" opacity="0.2" stroke="none" />
           <g stroke="none" transform="translate(-1 -34)">
@@ -359,7 +351,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
           <rect x="-16" y="-34" width="34" height="9" rx="3" fill="#D1A06C" />
           <path d="M-16 -22 H18 M-16 -10 H18" />
         </g>
-        {/* pitchfork (png, 1500 x 1500). the fork fills the full height of its square, so the tines end at y 300 */}
+        {}
         <image
           href={forkImg}
           x="687"
@@ -379,7 +371,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
           <path d="M598 394 l34 -6 l8 18 l-34 6 z" fill="#FBF6EA" stroke={LINE} strokeWidth="1.5" strokeLinejoin="round" />
           <path d="M606 396 l20 -3 M608 401 l20 -3" stroke={LEAF_D} strokeWidth="1.600" strokeLinecap="round" />
         </g>
-        {/* mailbox (png, 1500 x 1500). its post is 60% across the image, so it lands on x 667 and ends on the ground at y 402 */}
+        {}
         <image
           href={mailboxImg}
           x="583"
@@ -392,7 +384,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
         <Tag x={668} y={414} text="Mail" sub={mailSub} />
       </Spot>
 
-      {/* chunky fence in the front left corner */}
+      {}
       <g stroke={LINE} strokeWidth="2.400" strokeLinejoin="round">
         <path d="M0 372 L170 396 V412 L0 390 Z" fill={WOOD} />
         <path d="M0 398 L170 424 V440 L0 416 Z" fill="#B58355" />
@@ -409,8 +401,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
   );
 }
 
-// the phone + tablet layout: a tall scene (400 x 600) like the portrait picture. the sky and mountains on top, the barn on the left,
-// the beds in the middle, the path winding down to the mailbox, and the crate + fork in the bottom left corner.
+
 function SceneMobile({ fields = null, crops = null, unread = null }) {
   const farmSub = fields > 0 ? plural(fields, "field", "fields") : null;
   const libSub = crops > 0 ? `${crops} planted` : null;
@@ -431,7 +422,7 @@ function SceneMobile({ fields = null, crops = null, unread = null }) {
         </g>
       </defs>
 
-      {/* the sky and the ground reach far past the picture (top, bottom and sides), so a tall phone screen is filled with scenery instead of blank space */}
+      {}
       <rect x="-1200" y="-900" width="2800" height="1110" fill="url(#fm-home-sky-m)" />
       <g transform="translate(12 45) scale(0.8)">
         <g className="fm-home__cloud" fill="#FBF6EA" opacity="0.95">
@@ -447,7 +438,7 @@ function SceneMobile({ fields = null, crops = null, unread = null }) {
       </g>
       <path d="M0 176 Q100 146 200 170 T400 156 V210 H0 Z" fill="#A5C77B" />
       <path d="M180 156 Q300 116 400 134 V210 H180 Z" fill="#B4D38A" />
-      {/* mountains: their flat bottoms end under the ground (the ground starts near y 190), so no cut edge shows */}
+      {}
       <image href={mountainImg} x="90" y="2" width="330" height="330" className="fm-home__img fm-home__far" aria-hidden="true" />
       <image href={mountainImg} x="0" y="38" width="270" height="270" transform="translate(250 0) scale(-1 1)" className="fm-home__img fm-home__far" aria-hidden="true" />
 
@@ -458,7 +449,7 @@ function SceneMobile({ fields = null, crops = null, unread = null }) {
       <ellipse cx="270" cy="430" rx="120" ry="22" fill="#9CC460" opacity="0.6" />
       <ellipse cx="80" cy="392" rx="80" ry="18" fill="#9CC460" opacity="0.6" />
 
-      {/* the field fence behind the beds */}
+      {}
       <g>
         <path d="M204 216 L398 202 M204 227 L398 213" stroke={LINE} strokeWidth="5" strokeLinecap="round" />
         <path d="M204 216 L398 202 M204 227 L398 213" stroke={WOOD} strokeWidth="3.2" strokeLinecap="round" />
@@ -517,7 +508,7 @@ function SceneMobile({ fields = null, crops = null, unread = null }) {
           <rect x="0" y="430" width="100" height="16" rx="4" fill="#D1A06C" />
           <path d="M0 462 H100 M0 480 H100" />
         </g>
-        {/* the fork is mirrored so it leans toward the crate */}
+        {}
         <image href={forkImg} x="20" y="372" width="130" height="130" transform="translate(170 0) scale(-1 1)" className="fm-home__img" aria-hidden="true" />
         <Tag x={64} y={524} text="Settings" />
       </Spot>
@@ -550,8 +541,7 @@ function SceneMobile({ fields = null, crops = null, unread = null }) {
   );
 }
 
-// true on a phone, a tablet, or any screen held upright up to iPad Pro 12.9 size (1100px wide). the home page uses the tall scene there.
-// a laptop or a tablet held sideways gets the wide scene.
+
 function useNarrow(query = "(max-width: 1023px), (orientation: portrait) and (max-width: 1100px)") {
   const get = () => typeof window !== "undefined" && window.matchMedia(query).matches;
   const [narrow, setNarrow] = useState(get);
@@ -573,8 +563,7 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // the notes on the Farm, Library and Mail labels. this page only reads the slots and the notification marks, it never saves them.
-  // todo(backend): when these come from the server, a lighter summary route (GET /summary) can return the three numbers.
+ 
   const [slots, setSlots] = useState(null);
   const [marks, setMarks] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -582,7 +571,7 @@ export default function Home() {
     let live = true;
     getSlots()
       .then((list) => live && setSlots(Array.isArray(list) ? list : []))
-      .catch((e) => console.warn("[farme] home slots failed:", e)); // shows in the browser console if the slots can't be read
+      .catch((e) => console.warn("[farme] home slots failed:", e)); 
     getNotificationStates()
       .then((m) => live && setMarks(m))
       .catch((e) => console.warn("[farme] home notifications failed:", e));
@@ -590,7 +579,7 @@ export default function Home() {
       live = false;
     };
   }, []);
-  // watering reminders change with the time of day, so the Mail number is checked again every minute
+
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(t);

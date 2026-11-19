@@ -46,7 +46,7 @@ import "./library.css";
 import dashboardEmpty from "../../assets/dashboard-empty-state.png";
 import libraryEmpty from "../../assets/library-empty-state.png";
 
-// todo: the date + stage helpers below are copies of the ones in dashboard.jsx. move them to one shared utils file.
+
 const STAGES = {
   planned: { label: "Not planted yet", color: "#DEC59E" },
   sprout: { label: "Sprout", color: "#B9C79A" },
@@ -54,7 +54,7 @@ const STAGES = {
   flowering: { label: "Flowering", color: "#F0C4B4" },
   ready: { label: "Ready to harvest", color: "#33432B" },
 };
-// the stages in order, with where each one starts and ends (as a share of the crop's maturity days)
+
 const GROWTH = [
   ["sprout", 0, 0.25],
   ["growing", 0.25, 0.6],
@@ -62,7 +62,7 @@ const GROWTH = [
   ["ready", 1, null],
 ];
 
-/* ---------- helpers ---------- */
+
 
 const pad = (n) => String(n).padStart(2, "0");
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -79,7 +79,7 @@ const niceDate = (s) =>
 const fmt = (value) => Number(value ?? 0).toFixed(1);
 const pctOf = (age, maturity) => Math.min(100, Math.max(0, Math.round((age / maturity) * 100)));
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-// where a plant sits in its field, like "Row 2, column 3". notes keep a plant's id, so a removed plant says so.
+
 const spotOf = (slot, id) => {
   const p = slot?.plants.find((x) => x.id === id);
   return p ? `Row ${p.row + 1}, column ${p.col + 1}` : "a removed plant";
@@ -91,14 +91,12 @@ const stageOf = (age, maturity) => {
   return r < 0.25 ? "sprout" : r < 0.6 ? "growing" : r < 1 ? "flowering" : "ready";
 };
 
-// one entry per crop in a field. the squares are grouped by planting date ("plantings"), because the same crop can be
-// planted on different days. each planting has its own age, stage and harvest date.
-// plants = every square on its own. since / age / stage / harvestOn describe the oldest planting (the most advanced one).
+
 function cropsIn(slot) {
   const g = {};
   slot.plants.forEach((p) => {
     const crop = cropByKey(p.cropKey);
-    if (!crop) return; // a crop that's no longer in crops.jsx is skipped instead of crashing the page
+    if (!crop) return; 
     const e = (g[crop.key] ||= { crop, count: 0, groups: {}, list: [] });
     e.count++;
     e.list.push(p);
@@ -118,7 +116,7 @@ function cropsIn(slot) {
           left: Math.max(0, e.crop.maturity - age),
         };
       });
-    // every planted square on its own, in grid order (row by row)
+  
     const plants = [...e.list]
       .sort((a, b) => a.row - b.row || a.col - b.col)
       .map((p) => {
@@ -150,7 +148,7 @@ function cropsIn(slot) {
   });
 }
 
-// loads the weather for one field
+
 function useWx(lat, lon) {
   const [wx, setWx] = useState(null);
   useEffect(() => {
@@ -166,7 +164,6 @@ function useWx(lat, lon) {
   return wx;
 }
 
-// true on phone screens (below 640px). the filter uses it to show growth stages as tick boxes.
 function usePhone() {
   const q = "(max-width: 639px)";
   const [phone, setPhone] = useState(() => window.matchMedia(q).matches);
@@ -179,7 +176,7 @@ function usePhone() {
   return phone;
 }
 
-// true on laptop screens and up. below that, the crop details open in a dialog instead of a side panel.
+
 function useWide() {
   const q = "(min-width: 1024px)";
   const [wide, setWide] = useState(() => window.matchMedia(q).matches);
@@ -192,9 +189,7 @@ function useWide() {
   return wide;
 }
 
-/* ---------- dialogs ---------- */
 
-// a note can be about several crops. old notes only have one cropKey, so these read both shapes.
 const noteKeys = (n) => n.cropKeys || (n.cropKey ? [n.cropKey] : []);
 const cropsLabel = (keys) =>
   keys
@@ -203,8 +198,7 @@ const cropsLabel = (keys) =>
     .map((c) => `${c.emoji} ${c.name}`)
     .join(", ");
 
-// new journal note: pick the field, tick the crop(s) it is about, then write it. the note is dated today.
-// start = { slotId, cropKeys, plantId? } is what the dialog opens with. with a plantId the note is only about that one plant.
+
 function NoteModal({ slots, start, onSave, onClose }) {
   const [slotId, setSlotId] = useState(start.slotId);
   const [keys, setKeys] = useState(start.cropKeys);
@@ -249,7 +243,7 @@ function NoteModal({ slots, start, onSave, onClose }) {
               value={slotId}
               onChange={(v) => {
                 setSlotId(v);
-                setKeys([]); // the crops belong to the field, so start the picks over
+                setKeys([]); 
               }}
               options={slots.map((s) => ({ value: s.id, label: s.name }))}
             />
@@ -330,7 +324,7 @@ function NoteModal({ slots, start, onSave, onClose }) {
   );
 }
 
-// the crop picker groups the crops by type, so "Vegetables" ticks every vegetable at once
+
 const CROP_GROUPS = [
   ["vegetable", "Vegetables"],
   ["fruit", "Fruits"],
@@ -344,30 +338,28 @@ const SORT_OPTIONS = [
   { value: "harvest-late", label: "Harvest: latest first" },
 ];
 const NO_FILTER = {
-  crops: [], // crop keys to show. empty = every crop
+  crops: [], 
   field: "all",
   plantedFrom: "",
   plantedTo: "",
   harvestFrom: "",
   harvestTo: "",
-  stages: [], // growth stages to show. empty = every stage
+  stages: [], 
   sort: "default",
 };
 const SEARCH_HINT = { fields: "Search in your fields…", harvest: "Search harvests…", journal: "Search notes…" };
 
-// every crop's journal tab gets one of the palette colors: [background, text]
+
 const TAB_COLORS = [
-  ["#6A784D", "#FBF6EA"], // dingley
-  ["#C4866D", "#202808"], // copper
-  ["#DEC59E", "#202808"], // brandy
-  ["#A66F57", "#FBF6EA"], // soil
-  ["#33432B", "#FBF6EA"], // kombu
+  ["#6A784D", "#FBF6EA"], 
+  ["#C4866D", "#202808"], 
+  ["#DEC59E", "#202808"], 
+  ["#A66F57", "#FBF6EA"], 
+  ["#33432B", "#FBF6EA"], 
 ];
 const tabColor = (key) => TAB_COLORS[Math.max(0, CROPS.findIndex((c) => c.key === key)) % TAB_COLORS.length];
 
-// dates are yyyy-mm-dd strings, so comparing them as text works. an empty limit means "no limit"
 const inRange = (d, from, to) => (!from || d >= from) && (!to || d <= to);
-// does this plant pass the date filters? harvest date = planting date + the crop's maturity days
 function plantPasses(p, f) {
   const crop = cropByKey(p.cropKey);
   if (!crop) return false;
@@ -378,9 +370,8 @@ function plantPasses(p, f) {
     (f.stages.length === 0 || f.stages.includes(stageOf(daysBetween(p.plantedOn, todayIso()), crop.maturity)))
   );
 }
-// the field with only the plants that pass the date filters, so counts and details match what the filter shows
+
 const filterSlot = (slot, f) => ({ ...slot, plants: slot.plants.filter((p) => plantPasses(p, f)) });
-// sorts the crop tiles inside a field by the dates of their plantings
 function sortTiles(tiles, sort) {
   const first = (t) => t.batches[0];
   const last = (t) => t.batches[t.batches.length - 1];
@@ -392,7 +383,7 @@ function sortTiles(tiles, sort) {
   }[sort];
   return by ? [...tiles].sort(by) : tiles;
 }
-// sorts single plants (the "each plant" view)
+
 function sortPlants(list, sort) {
   const by = {
     "planted-new": (a, b) => b.plantedOn.localeCompare(a.plantedOn),
@@ -403,7 +394,7 @@ function sortPlants(list, sort) {
   return by ? [...list].sort(by) : list;
 }
 
-// from / to date pickers for one kind of date
+
 function DateRange({ id, label, hint, from, to, onChange }) {
   return (
     <fieldset className="flex flex-col gap-2">
@@ -436,7 +427,7 @@ function DateRange({ id, label, hint, from, to, onChange }) {
   );
 }
 
-// one tick box with a label, used by the filter
+
 function CheckRow({ checked, onChange, children }) {
   return (
     <label className={`fm-checkrow${checked ? " is-on" : ""}`}>
@@ -446,7 +437,7 @@ function CheckRow({ checked, onChange, children }) {
   );
 }
 
-// a tick box that can also show "some are ticked" (used for the Vegetables / Fruits headers)
+
 function GroupCheck({ checked, some, onChange }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -455,7 +446,7 @@ function GroupCheck({ checked, some, onChange }) {
   return <input ref={ref} type="checkbox" className="fm-check" checked={checked} onChange={onChange} />;
 }
 
-// dropdown of crops with tick boxes, grouped by type. ticking a group header ticks all its crops.
+
 function CropPicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const toggle = (k) => onChange(value.includes(k) ? value.filter((x) => x !== k) : [...value, k]);
@@ -523,7 +514,7 @@ function CropPicker({ value, onChange }) {
   );
 }
 
-// phone version of the growth stage filter: a dropdown with a tick box for every stage
+
 function StagePicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const toggle = (k) => onChange(value.includes(k) ? value.filter((x) => x !== k) : [...value, k]);
@@ -655,14 +646,13 @@ function FilterModal({ value, slots, onApply, onClose }) {
   );
 }
 
-// ---------- edit dialogs. saving does not apply the change right away: the page asks "save changes?" first.
+
 function EditNoteModal({ slot, note, onSave, onClose }) {
   const [text, setText] = useState(note.text);
   const [date, setDate] = useState(note.date);
   const [keys, setKeys] = useState(noteKeys(note));
   const [tried, setTried] = useState(false);
-  const single = Boolean(note.plantIds?.length); // a note about one plant keeps its crop
-  // the crops of this field plus the note's own, so a crop whose plants are gone can stay on the note
+  const single = Boolean(note.plantIds?.length); 
   const crops = [...new Set([...slot.plants.map((p) => p.cropKey), ...noteKeys(note)])].map(cropByKey).filter(Boolean);
   const textError = !text.trim() ? "Write a short note first." : "";
   const cropError = !single && keys.length === 0 ? "Pick at least one crop." : "";
@@ -757,7 +747,7 @@ function EditNoteModal({ slot, note, onSave, onClose }) {
   );
 }
 
-// a harvest log can change its amount and the day it was harvested. whether the plant was kept or removed is a fact, so it stays.
+
 function EditHarvestModal({ harvest, onSave, onClose }) {
   const [amount, setAmount] = useState(String(harvest.amount ?? ""));
   const [date, setDate] = useState(harvest.date);
@@ -821,9 +811,6 @@ function EditHarvestModal({ harvest, onSave, onClose }) {
   );
 }
 
-/* ---------- small pieces ---------- */
-
-// pick = null normally. in select mode it is { checked, onToggle } and the card turns into a tick box.
 function NoteCard({ note, label, tag, pick, onEdit, onDelete }) {
   const d = new Date(`${note.date}T00:00:00`);
   const Wrap = pick ? "label" : "div";
@@ -873,7 +860,7 @@ function NoteCard({ note, label, tag, pick, onEdit, onDelete }) {
   );
 }
 
-// one logged harvest. in select mode (pick = { checked, onToggle }) the whole row is a tick box.
+
 function HarvestRow({ h, pick, onEdit }) {
   const Wrap = pick ? "label" : "div";
   return (
@@ -913,7 +900,7 @@ function HarvestRow({ h, pick, onEdit }) {
   );
 }
 
-// the row above a list that lets you tick things and delete them together
+
 function SelectBar({ selecting, count, total, onStart, onCancel, onAll, onDelete }) {
   if (!selecting)
     return (
@@ -944,8 +931,7 @@ function SelectBar({ selecting, count, total, onStart, onCancel, onAll, onDelete
   );
 }
 
-// the crops of the Harvest History and the Crop Journal: "All" plus one colored chip per crop.
-// each crop is its own notebook / its own harvest page.
+
 function CropTabs({ crops, counts, total, active, onPick, label, emoji, noun }) {
   const items = [
     { key: "all", label, emoji, n: total, bg: "#FBF6EA", fg: "#202808" },
@@ -999,7 +985,7 @@ function Progress({ pct }) {
 
 const dayLabel = (t) => (t.age < 0 ? `Starts in ${-t.age} d` : `Day ${t.age}`);
 
-// one planted square in the "each plant" view. the card opens the crop's details, the bin removes just this plant.
+
 function PlantCard({ plant, on, onSelect, onRemove }) {
   const pct = Math.min(100, Math.max(0, Math.round((plant.age / plant.crop.maturity) * 100)));
   return (
@@ -1041,13 +1027,13 @@ function PlantCard({ plant, on, onSelect, onRemove }) {
   );
 }
 
-// one field: its header (size, soil, place, weather) and a tile for every crop planted in it
+
 function FieldCard({ slot, tiles, selected, onSelect }) {
   const wx = useWx(slot.lat, slot.lon);
-  const [showInfo, setShowInfo] = useState(false); // the size / soil / place details sit behind the small (i) icon
+  const [showInfo, setShowInfo] = useState(false); 
   const infoRoot = useRef(null);
   const infoId = useId();
-  // closes on a tap outside or Escape, like the dashboard
+
   useEffect(() => {
     if (!showInfo) return;
     const away = (e) => infoRoot.current && !infoRoot.current.contains(e.target) && setShowInfo(false);
@@ -1151,7 +1137,7 @@ function FieldCard({ slot, tiles, selected, onSelect }) {
   );
 }
 
-/* ---------- crop details (side panel on big screens, dialog on small ones) ---------- */
+
 
 const DETAIL_TABS = [
   ["overview", "Overview"],
@@ -1160,7 +1146,7 @@ const DETAIL_TABS = [
   ["journal", "Journal"],
 ];
 
-// one planted square: where it is, when it was planted, its stage and how far along it is
+
 function PlantRow({ plant, crop, onOpen, onRemove }) {
   const pct = pctOf(plant.age, crop.maturity);
   return (
@@ -1202,9 +1188,7 @@ function PlantRow({ plant, crop, onOpen, onRemove }) {
   );
 }
 
-// props: info = the crop in this field. plant = one planted square of it (or null for the whole crop).
-// with a plant, every tab is about just that plant: its own overview, growth dates, harvest history and journal.
-// tab / onTab: the open tab (kept by the page, so it stays when you switch to another crop or plant)
+
 function Detail({ slot, info, plant, notes, tab, onTab, onBack, onBackToCrop, onOpenPlant, onNew, onEdit, onDelete, onRemove }) {
   const { crop } = info;
   const shown = plant ? [plant] : info.plants;
@@ -1215,10 +1199,9 @@ function Detail({ slot, info, plant, notes, tab, onTab, onBack, onBackToCrop, on
     ["Soil", crop.soils.join(", ")],
     ["Seasons", crop.seasons.map((s) => (s === "wet" ? "Wet" : "Dry")).join(", ")],
   ];
-  // plant mode: notes written for this plant, then the notes written for the whole crop
+
   const own = plant ? notes.filter((n) => n.plantIds?.includes(plant.id)) : [];
   const shared = plant ? notes.filter((n) => !n.plantIds?.length) : notes;
-  // harvests logged for this exact square (the dashboard saves the row and column with each one)
   const pastHarvests = plant
     ? (slot.harvests || [])
         .filter((h) => h.cropKey === crop.key && h.row === plant.row && h.col === plant.col)
@@ -1507,7 +1490,7 @@ function Detail({ slot, info, plant, notes, tab, onTab, onBack, onBackToCrop, on
   );
 }
 
-/* ---------- main ---------- */
+
 
 const TABS = [
   ["fields", "My Fields", Sprout],
@@ -1518,34 +1501,32 @@ const TABS = [
 export default function FarMeLibrary() {
   const [slots, setSlots] = useState([]);
   const [loaded, setLoaded] = useState(false);
-  // keep the skeleton on screen for at least this long, so a fast load doesn't just flash it
   const [minDone, setMinDone] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setMinDone(true), 600);
     return () => clearTimeout(t);
   }, []);
   const shown = loaded && minDone;
-  const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); // empty until getUser answers, so no placeholder name shows
+  const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); 
   const [tab, setTab] = useState("fields");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState(NO_FILTER); // only the My Fields tab has a filter
-  const [view, setView] = useState("crop"); // "crop" = one tile per crop, "plant" = every planted square on its own
+  const [filter, setFilter] = useState(NO_FILTER); 
+  const [view, setView] = useState("crop"); 
   const [showFilter, setShowFilter] = useState(false);
-  const [selected, setSelected] = useState(null); // { slotId, cropKey, plantId? }. with a plantId the details are about that one plant
-  const [showNote, setShowNote] = useState(null); // { slotId, cropKeys, plantId? } while the new-note dialog is open
-  const [noteCrop, setNoteCrop] = useState("all"); // which crop journal is open on the Crop Journal tab ("all" = every note)
-  const [selecting, setSelecting] = useState(false); // select mode on the Harvest History and Crop Journal tabs
-  const [picked, setPicked] = useState([]); // ids of the ticked harvest entries / notes
+  const [selected, setSelected] = useState(null); 
+  const [showNote, setShowNote] = useState(null); 
+  const [noteCrop, setNoteCrop] = useState("all"); 
+  const [selecting, setSelecting] = useState(false); 
+  const [picked, setPicked] = useState([]); 
   const [bulkDel, setBulkDel] = useState(false);
-  const [harvestCrop, setHarvestCrop] = useState("all"); // which crop's harvests are open on the Harvest History tab
-  const [dtab, setDtab] = useState("overview"); // open tab of the crop details
-  const [editing, setEditing] = useState(null); // { kind: "note" | "harvest", slotId, id } while the edit dialog is open
-  const [pending, setPending] = useState(null); // an edit waiting for "save changes?": { kind, slotId, id, patch }
-  const [delNote, setDelNote] = useState(null); // { slotId, id }
-  const [delPlants, setDelPlants] = useState(null); // { slotId, ids }: plants waiting for "remove?"
+  const [harvestCrop, setHarvestCrop] = useState("all"); 
+  const [dtab, setDtab] = useState("overview"); 
+  const [editing, setEditing] = useState(null); 
+  const [pending, setPending] = useState(null); 
+  const [delNote, setDelNote] = useState(null); 
+  const [delPlants, setDelPlants] = useState(null); 
   const wide = useWide();
 
-  // the library reads the same slots as the dashboard (GET /slots). each slot already comes with its plants, harvests and notes.
   useEffect(() => {
     const loadLibrary = async () => {
       try {
@@ -1561,7 +1542,7 @@ export default function FarMeLibrary() {
     loadLibrary();
     getUser().then(setUser).catch(console.error);
   }, []);
-  // search matches crop names (local + english) and field names. the date filters and sorting come from the filter dialog.
+
   const q = query.trim().toLowerCase();
   const narrowed =
     filter.crops.length > 0 ||
@@ -1585,7 +1566,7 @@ export default function FarMeLibrary() {
         .filter((f) => f.tiles.length > 0 || (!q && !narrowed)),
     [slots, q, filter, narrowed],
   );
-  // every planted square on its own, for the "each plant" view
+
   const plantCards = useMemo(
     () =>
       sortPlants(
@@ -1602,7 +1583,7 @@ export default function FarMeLibrary() {
 
  const addNote = async ({ slotId, cropKeys, plantIds, text }) => {
     try {
-      // POST /slots/:id/notes. the server sends back the saved note { id, cropKeys, plantIds, date, text }
+     
       const note = await createNoteAPI(slotId, {
         cropKeys,
         plantIds: plantIds || null,
@@ -1641,7 +1622,6 @@ export default function FarMeLibrary() {
     }
   };
 
-  // removing plants from the library. their notes and harvest history stay.
  const removePlants = async () => {
     const { slotId, ids } = delPlants;
     const slot = slots.find((s) => s.id === slotId);
@@ -1673,7 +1653,7 @@ export default function FarMeLibrary() {
   const delSameCrop = delList.length > 0 && delList.every((p) => p.cropKey === delList[0].cropKey);
   const delName = delList.length ? cropByKey(delList[0].cropKey)?.name : "";
 
-  // ----- crop journal: the notes (after the search), and the crop whose notebook is open
+  
   const notesBase = slots
     .flatMap((s) =>
       (s.notes || []).map((n) => ({
@@ -1693,7 +1673,7 @@ export default function FarMeLibrary() {
           n.crops.some((c) => c.name.toLowerCase().includes(q) || c.en.toLowerCase().includes(q))),
     );
   const plantedAnywhere = (c) => slots.some((s) => s.plants.some((p) => p.cropKey === c.key));
-  // a crop gets a tab when it is planted somewhere or already has notes
+
   const journalCrops = CROPS.filter((c) => plantedAnywhere(c) || notesBase.some((n) => n.crops.some((x) => x.key === c.key)));
   const noteCounts = {};
   notesBase.forEach((n) => n.crops.forEach((c) => (noteCounts[c.key] = (noteCounts[c.key] || 0) + 1)));
@@ -1703,7 +1683,7 @@ export default function FarMeLibrary() {
     b.date.localeCompare(a.date),
   );
 
-  // ----- harvest history: the harvests logged on the dashboard + what is ready now, for the crop whose tab is open
+
   const harvestsBase = slots
     .flatMap((s) => (s.harvests || []).map((h) => ({ ...h, slotId: s.id, slotName: s.name, crop: cropByKey(h.cropKey) })))
     .filter((h) => h.crop && (!q || [h.crop.name, h.crop.en, h.slotName].some((v) => v.toLowerCase().includes(q))));
@@ -1727,7 +1707,7 @@ export default function FarMeLibrary() {
         .map((t) => ({ slot: s, ...t })),
     );
 
-  // only My Fields has a filter now
+
   const filterCount =
     Boolean(filter.crops.length) +
     (filter.field !== "all") +
@@ -1736,7 +1716,7 @@ export default function FarMeLibrary() {
     Boolean(filter.stages.length) +
     (filter.sort !== "default");
 
-  // ----- edit (the dialog asks, then the page asks "save changes?")
+
   const editSlot = editing ? slots.find((s) => s.id === editing.slotId) : null;
   const editNote = editing?.kind === "note" ? editSlot?.notes?.find((n) => n.id === editing.id) : null;
   const editHarvestRaw = editing?.kind === "harvest" ? editSlot?.harvests?.find((h) => h.id === editing.id) : null;
@@ -1745,7 +1725,7 @@ export default function FarMeLibrary() {
     const { kind, slotId, id, patch } = pending;
 
     try {
-      // PATCH /notes/:id or /harvests/:id. only the fields that changed are sent, and the server answers with the saved record
+      
       const saved =
         kind === "note"
           ? await updateNoteAPI(id, patch)
@@ -1771,9 +1751,9 @@ export default function FarMeLibrary() {
     }
   };
 
-  // ----- select mode (harvest history + journal)
+
   const visibleIds = tab === "harvest" ? harvested.map((h) => h.id) : tab === "journal" ? allNotes.map((n) => n.id) : [];
-  const pickedNow = picked.filter((id) => visibleIds.includes(id)); // ticked items that are still on screen
+  const pickedNow = picked.filter((id) => visibleIds.includes(id)); 
   const goTab = (k) => {
     setTab(k);
     setSelecting(false);
@@ -1821,7 +1801,7 @@ export default function FarMeLibrary() {
       alert(error.message || "Failed to delete selected records.");
     }
   };
-  // new note from the journal tab: starts on the open crop (in a field where it is planted)
+  
   const startNote = () => {
     const home = jKey !== "all" ? slots.find((s) => s.plants.some((p) => p.cropKey === jKey)) : null;
     setShowNote({ slotId: (home || slots[0]).id, cropKeys: home ? [jKey] : [] });
@@ -1838,7 +1818,6 @@ export default function FarMeLibrary() {
       onTab={setDtab}
       onEdit={(n) => setEditing({ kind: "note", slotId: selSlot.id, id: n.id })}
       onBack={wide ? () => setSelected(null) : null}
-      // only when the plant was opened from its crop (Grouped). in Individual there is no crop page to go back to.
       onBackToCrop={view === "crop" ? () => setSelected({ slotId: selected.slotId, cropKey: selected.cropKey }) : null}
       onOpenPlant={(plantId) => setSelected({ slotId: selected.slotId, cropKey: selected.cropKey, plantId })}
       onNew={() => setShowNote({ slotId: selSlot.id, cropKeys: [selected.cropKey], plantId: selPlant?.id })}
@@ -1869,7 +1848,7 @@ export default function FarMeLibrary() {
           </p>
         </header>
 
-        {/* the book: cover > index tabs + the open pages (left page = the list, right page = details on big screens) */}
+        {}
         <div className="fm-book">
           <div role="tablist" aria-label="Library sections" className="fm-book__tabs">
             {TABS.map(([k, label, Icon]) => (

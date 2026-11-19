@@ -1,4 +1,3 @@
-/* hidden YouTube player: kept on the page (not display:none) so it still works */
 .fm-bgm__yt {
   position: fixed;
   bottom: 0;
@@ -9,15 +8,13 @@
   pointer-events: none;
 }
 
-/* wrapper: fixed positioning lives here */
 .fm-bgm-wrap {
   position: fixed;
   top: 36px;
   right: 44px;
-  z-index: 40; /* above the chat bubble (30) and chat window (31), under popups (1000) */
+  z-index: 40; 
 }
 
-/* same look as the .fm-btn buttons in shared.css: pine border + hard offset shadow */
 .fm-bgm {
   display: flex;
   align-items: center;
@@ -56,15 +53,12 @@
   cursor: not-allowed;
 }
 
-/* music playing: warm copper fill, like .fm-btn--accent */
+
 .fm-bgm--on {
   color: var(--pine, #202808);
   background: var(--copper, #c4866d);
 }
 
-/* volume pill: sits right under the button, shown on hover / keyboard focus.
-   the outer box has top padding so the mouse can travel from the button to the
-   slider without the pill disappearing */
 .fm-bgm-vol {
   position: absolute;
   top: 100%;
@@ -134,7 +128,7 @@
   outline: 3px solid var(--copper, #c4866d);
   outline-offset: 3px;
 }
-/* touch screens have no hover, so keep the slider visible there */
+
 @media (hover: none) {
   .fm-bgm-vol {
     opacity: 1;

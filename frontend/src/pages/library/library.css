@@ -1,29 +1,18 @@
-/*  the parts, from the outside in:
-     .fm-book           the cloth cover (spine on the left, page block peeking out at the bottom)
-     .fm-book__tabs     index tabs that stick out of the top of the pages
-     .fm-book__spread   the open book. one page on phones, two pages (list + details) on laptops
-     .fm-page           one page. --left and --right are the two sides of the spread
-     .fm-chapter        one field = one chapter (numbered with a css counter)
-     .fm-specimen       a crop / plant card, like a pressed-flower card taped to the page
-     .fm-entry          one journal note, like a line on notebook paper
-
-/* ---------- the cover ---------- */
 .fm-book {
-  --book-gutter: 1.25rem; /* how much cover shows around the pages */
-  --book-spine: 1.9rem; /* the width of the spine on the left */
+  --book-gutter: 1.25rem; 
+  --book-spine: 1.9rem; 
   position: relative;
   width: 100%;
   min-width: 0;
   padding: 0.6rem var(--book-gutter) 1.6rem calc(var(--book-spine) + 0.35rem);
   background:
-    /* cloth weave */
+    
     repeating-linear-gradient(45deg, rgba(251, 246, 234, 0.045) 0 2px, transparent 2px 5px),
     var(--kombu);
   border: 3px solid var(--pine);
   border-radius: 0.6rem 1.1rem 1.1rem 0.6rem;
   box-shadow: 6px 6px 0 var(--pine);
 }
-/* the spine: darker, with raised bands and a little stitching */
 .fm-book::before {
   content: "";
   position: absolute;
@@ -32,14 +21,14 @@
   border-right: 3px solid var(--pine);
   border-radius: 0.5rem 0 0 0.5rem;
   background:
-    /* the two bands sit a fixed distance from the top and bottom, so they never move when the page gets taller or shorter */
+  
     linear-gradient(var(--copper), var(--copper)) 0 2.4rem / 100% 0.4rem no-repeat,
     linear-gradient(var(--copper), var(--copper)) 0 calc(100% - 2.8rem) / 100% 0.4rem no-repeat,
     linear-gradient(to right, rgba(251, 246, 234, 0.12), transparent 40%, rgba(0, 0, 0, 0.18)),
     var(--pine);
   pointer-events: none;
 }
-/* the page block seen from below: thin stripes like stacked sheets */
+
 .fm-book::after {
   content: "";
   position: absolute;
@@ -53,7 +42,7 @@
   z-index: 0;
 }
 
-/* ---------- index tabs ---------- */
+
 .fm-book__tabs {
   position: relative;
   z-index: 2;
@@ -85,7 +74,7 @@
     transform 0.12s ease,
     background-color 0.12s ease;
 }
-/* each tab sits a little lower than the active one, like tabs on a divider */
+
 .fm-booktab:not(.is-active) {
   transform: translateY(5px);
   padding-bottom: 5px;
@@ -100,7 +89,7 @@
 .fm-booktab.is-active {
   color: var(--pine);
   background: var(--paper);
-  /* hides the page's top border under the tab so the tab and the page are one piece of paper */
+ 
   box-shadow: 0 3px 0 var(--paper);
 }
 .fm-booktab:focus-visible {
@@ -108,7 +97,7 @@
   outline-offset: 2px;
 }
 
-/* ---------- the open book ---------- */
+
 .fm-book__spread {
   position: relative;
   z-index: 1;
@@ -119,7 +108,7 @@
   border-radius: 0.5rem 0.9rem 0.9rem 0.5rem;
   box-shadow: inset 0 0 0 4px rgba(222, 197, 158, 0.35);
 }
-/* a ribbon bookmark hanging out of the top edge */
+
 .fm-book__ribbon {
   position: absolute;
   z-index: 3;
@@ -137,7 +126,7 @@
   .fm-book__spread--open {
     grid-template-columns: minmax(0, 1fr) 26rem;
   }
-  /* the fold in the middle: both pages darken toward it */
+  
   .fm-book__spread--open .fm-page--left {
     background: linear-gradient(to right, transparent 94%, rgba(32, 40, 8, 0.1));
   }
@@ -153,7 +142,6 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  /* new page: slides in from the right when the section changes */
   animation: fm-turn 0.22s ease-out;
 }
 @media (min-width: 640px) {
@@ -164,7 +152,7 @@
 .fm-page--right {
   padding: 1.1rem;
 }
-/* the right page keeps its content in view while the left page scrolls */
+
 .fm-page__sticky {
   position: sticky;
   top: 1rem;
@@ -173,7 +161,7 @@
   overscroll-behavior: contain;
   padding-right: 0.15rem;
 }
-/* the empty right page: a quiet hint, with a pressed leaf */
+
 .fm-page__empty {
   display: flex;
   flex-direction: column;
@@ -187,7 +175,7 @@
   width: min(100%, 14rem);
   height: auto;
 }
-/* faint ruled lines, for the journal pages */
+
 .fm-page--ruled {
   background-image: repeating-linear-gradient(to bottom, transparent 0 1.9rem, rgba(106, 120, 77, 0.16) 1.9rem calc(1.9rem + 2px));
   background-position: 0 0.9rem;
@@ -203,7 +191,7 @@
   }
 }
 
-/* ---------- chapters (one per field) ---------- */
+
 .fm-book__spread {
   counter-reset: fm-chapter;
 }
@@ -230,7 +218,7 @@
 .fm-chapter__label::before {
   content: "Chapter " counter(fm-chapter, upper-roman);
 }
-/* the title gets a short copper rule under it */
+
 .fm-chapter__title {
   position: relative;
   padding-bottom: 0.35rem;
@@ -253,7 +241,7 @@
   font-size: 0.85rem;
   font-weight: 700;
 }
-/* section headings inside a page (Ready to harvest, Harvested) */
+
 .fm-page__heading {
   display: flex;
   align-items: center;
@@ -266,8 +254,7 @@
   border-top: 3px double var(--brandy);
 }
 
-/* ---------- specimen cards (crops and plants) ---------- */
-/* set --stage on the element to color the strip along the top (the same stage colors as the dashboard) */
+
 .fm-specimen {
   --stage: var(--brandy);
   position: relative;
@@ -322,7 +309,7 @@
   outline: 3px solid var(--copper);
   outline-offset: 2px;
 }
-/* the "plant more" card */
+
 .fm-specimen--add {
   min-height: 8.75rem;
   display: flex;
@@ -342,7 +329,7 @@
   }
 }
 
-/* stage chips (filter dialog) */
+
 .fm-stagechip {
   display: inline-flex;
   align-items: center;
@@ -370,7 +357,7 @@
   outline-offset: 2px;
 }
 
-/* ---------- journal entries ---------- */
+
 .fm-entry {
   position: relative;
   display: flex;
@@ -378,7 +365,7 @@
   gap: 0.6rem;
   padding: 0.7rem 0.75rem 0.7rem 4rem;
   background-color: #fffdf6;
-  /* the red-ish margin line and the ruled lines of notebook paper */
+
   background-image:
     linear-gradient(to right, transparent 3.3rem, var(--copper) 3.3rem calc(3.3rem + 2px), transparent calc(3.3rem + 2px)),
     repeating-linear-gradient(to bottom, transparent 0 1.45rem, rgba(106, 120, 77, 0.22) 1.45rem calc(1.45rem + 1px));
@@ -389,7 +376,7 @@
   border-radius: 0.5rem 0.75rem 0.75rem 0.5rem;
   box-shadow: 3px 3px 0 var(--brandy);
 }
-/* the date stamp in the margin */
+
 .fm-entry__stamp {
   position: absolute;
   left: 0.35rem;
@@ -415,7 +402,7 @@
 .fm-entry__text {
   line-height: 1.45rem;
 }
-/* a note that is only about one plant gets a small tag */
+
 .fm-entry__tag {
   display: inline-block;
   margin-top: 0.2rem;
@@ -427,7 +414,7 @@
   border-radius: 999px;
 }
 
-/*  the plant's own page (details)  */
+
 .fm-plantmark {
   display: inline-flex;
   align-items: center;
@@ -476,7 +463,7 @@
   }
 }
 
-/*  phones */
+
 @media (max-width: 639px) {
   .fm-book {
     --book-gutter: 0.6rem;
@@ -517,7 +504,7 @@
   border-radius: 999px;
 }
 
-/* crop journal: the open notebook's header */
+
 .fm-journal__head {
   --tab: var(--brandy);
   display: flex;
@@ -531,7 +518,7 @@
   border-radius: 0.75rem;
 }
 
-/*  crop chips: one colored chip per crop (Harvest History and Crop Journal)  */
+
 .fm-chips {
   display: flex;
   flex-wrap: wrap;
@@ -576,7 +563,7 @@
   outline-offset: 2px;
 }
 
-/* ---------- select mode ---------- */
+
 .fm-selectbar {
   position: sticky;
   top: 0.5rem;
@@ -639,7 +626,6 @@
   }
 }
 
-/* Grouped / Individual: a small two-part switch (not a tab and not a plain button) */
 .fm-seg {
   display: inline-flex;
   align-self: flex-start;
@@ -673,7 +659,7 @@
   flex-shrink: 0;
   box-sizing: border-box;
   height: 1.6rem;
-  min-width: 1.6rem; /* same as the height, so one digit is a perfect circle and two digits a pill */
+  min-width: 1.6rem; 
   padding: 0 0.3rem;
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
@@ -701,7 +687,7 @@
     transition: none;
   }
 }
-/* ---------- tick box rows in the filter ---------- */
+
 .fm-checkrow {
   display: flex;
   align-items: center;
@@ -723,7 +709,7 @@
   outline-offset: 2px;
 }
 
-/* ---------- crop dropdown in the filter ---------- */
+
 .fm-dropbtn {
   display: flex;
   align-items: center;
@@ -755,7 +741,7 @@
   background: var(--dingley, #6a784d);
   color: var(--paper);
 }
-/* the dash for "some ticked" */
+
 .fm-check:indeterminate {
   background: var(--kombu);
 }
@@ -767,12 +753,12 @@
   transform: none;
 }
 
-/* phones: the Grouped / Individual switch fills the page width, so it sits centered and is not cut off */
+
 @media (max-width: 639px) {
   .fm-seg {
     display: flex;
     align-self: stretch;
-    width: calc(100% - 3px); /* leaves room for the 3px shadow */
+    width: calc(100% - 3px); 
   }
   .fm-seg__btn {
     flex: 1 1 0;
@@ -782,7 +768,7 @@
   }
 }
 
-/* the From / To date pickers fill their column, so stacked on a phone they are not left with empty space beside them */
+
 .fm-daterange__field > *:not(label),
 .fm-daterange__field button[id],
 .fm-daterange__field input[id] {
@@ -790,7 +776,7 @@
   max-width: 100%;
 }
 
-/* phones: From and To stay on one row, so the pickers are made a bit smaller to fit side by side */
+
 @media (max-width: 639px) {
   .fm-daterange__field button[id],
   .fm-daterange__field input[id] {

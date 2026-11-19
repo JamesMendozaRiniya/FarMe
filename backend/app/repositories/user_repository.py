@@ -1,7 +1,17 @@
-from sqlalchemy import or_, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
 from app.models.user import User
+from app.models.dashboard import (
+    Slot,
+    Plant,
+    Harvest,
+    Note,
+    Watering,
+    NotificationState,
+)
+from app.models.password_reset import PasswordReset
+from app.models.chat import ChatConversation, ChatMessage
 
 
 def get_user_by_username(db: Session, username: str):
@@ -44,6 +54,8 @@ def create_user(db: Session, user_data: dict):
     except Exception:
         db.rollback()
         raise
+
+
 def update_user_profile(db: Session, user, update_data: dict):
     try:
         for key, value in update_data.items():
@@ -63,73 +75,57 @@ def delete_user(db: Session, user):
     try:
         user_id = user.id
 
-        db.execute(text("""
-            DELETE FROM field_harvests
-            WHERE field_id IN (
-                SELECT id FROM fields WHERE user_id = :user_id
-            )
-        """), {"user_id": user_id})
+        conversation_ids = [
+            row[0]
+            for row in db.query(ChatConversation.id).filter(
+                ChatConversation.user_id == user_id
+            ).all()
+        ]
 
-        db.execute(text("""
-            DELETE FROM planted_crops
-            WHERE field_id IN (
-                SELECT id FROM fields WHERE user_id = :user_id
-            )
-        """), {"user_id": user_id})
+        if conversation_ids:
+            db.query(ChatMessage).filter(
+                ChatMessage.conversation_id.in_(conversation_ids)
+            ).delete(synchronize_session=False)
 
-        db.execute(text("""
-            DELETE FROM journal_notes
-            WHERE user_id = :user_id
-               OR field_id IN (
-                   SELECT id FROM fields WHERE user_id = :user_id
-               )
-        """), {"user_id": user_id})
+            db.query(ChatConversation).filter(
+                ChatConversation.id.in_(conversation_ids)
+            ).delete(synchronize_session=False)
 
-        db.execute(text("""
-            DELETE FROM fields WHERE user_id = :user_id
-        """), {"user_id": user_id})
+        slot_ids = [
+            row[0]
+            for row in db.query(Slot.id).filter(
+                Slot.user_id == user_id
+            ).all()
+        ]
 
-        db.execute(text("""
-            DELETE FROM notes
-            WHERE slot_id IN (
-                SELECT id FROM slots WHERE user_id = :user_id
-            )
-        """), {"user_id": user_id})
+        if slot_ids:
+            db.query(Note).filter(
+                Note.slot_id.in_(slot_ids)
+            ).delete(synchronize_session=False)
 
-        db.execute(text("""
-            DELETE FROM waterings
-            WHERE slot_id IN (
-                SELECT id FROM slots WHERE user_id = :user_id
-            )
-        """), {"user_id": user_id})
+            db.query(Watering).filter(
+                Watering.slot_id.in_(slot_ids)
+            ).delete(synchronize_session=False)
 
-        db.execute(text("""
-            DELETE FROM harvests
-            WHERE slot_id IN (
-                SELECT id FROM slots WHERE user_id = :user_id
-            )
-        """), {"user_id": user_id})
+            db.query(Harvest).filter(
+                Harvest.slot_id.in_(slot_ids)
+            ).delete(synchronize_session=False)
 
-        db.execute(text("""
-            DELETE FROM plants
-            WHERE slot_id IN (
-                SELECT id FROM slots WHERE user_id = :user_id
-            )
-        """), {"user_id": user_id})
+            db.query(Plant).filter(
+                Plant.slot_id.in_(slot_ids)
+            ).delete(synchronize_session=False)
 
-        db.execute(text("""
-            DELETE FROM slots WHERE user_id = :user_id
-        """), {"user_id": user_id})
+            db.query(Slot).filter(
+                Slot.id.in_(slot_ids)
+            ).delete(synchronize_session=False)
 
-        db.execute(text("""
-            DELETE FROM notification_states
-            WHERE user_id = :user_id
-        """), {"user_id": user_id})
+        db.query(NotificationState).filter(
+            NotificationState.user_id == user_id
+        ).delete(synchronize_session=False)
 
-        db.execute(text("""
-            DELETE FROM password_resets
-            WHERE user_id = :user_id
-        """), {"user_id": user_id})
+        db.query(PasswordReset).filter(
+            PasswordReset.user_id == user_id
+        ).delete(synchronize_session=False)
 
         db.delete(user)
         db.commit()

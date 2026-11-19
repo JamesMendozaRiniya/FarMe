@@ -1,21 +1,14 @@
-// the register page: first name, last name, username, email, password + confirmation,
-// and an optional avatar made with DiceBear. the card on the side shows who you will be in FarMe, live.
-//
-//   route:  <Route path="/register" element={<Register />} />   (in App.jsx: if (path.startsWith("/register")) return <Register />;)
-//   needs:  npm i @dicebear/core @dicebear/styles
 import { useRef, useState } from "react";
 import { Check, Circle, Sparkles } from "lucide-react";
 import "./register.css";
 import logo from "../../assets/sidebar-logo.png";
 import AvatarStudio from "../../components/avatar-studio";
 import { startAvatar, useAvatarUri } from "../../components/avatar";
-import { register } from "../../services/farmeApi"; // the call to the server (todo(backend) notes are there)
-import PageFade from "../../components/page-fade"; // fades between the register / login / forgot / reset pages
+import { register } from "../../services/farmeApi"; 
+import PageFade from "../../components/page-fade"; 
 
-const LOGIN_HREF = "/login"; // our login page (App.jsx). change it if the route changes
-
-// ---------- checks (the server must check again: these only help people early) ----------
-const NAME_RE = /^[\p{L}][\p{L}\p{M}'’ .-]*$/u; // letters, plus spaces . - ' inside names
+const LOGIN_HREF = "/login"; 
+const NAME_RE = /^[\p{L}][\p{L}\p{M}'’ .-]*$/u; 
 const USERNAME_RE = /^[a-z0-9_]+$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PASSWORD_RULES = [
@@ -59,13 +52,12 @@ const CHECKS = {
     return "";
   },
 };
-const FIELDS = Object.keys(CHECKS); // also the order of the form, used to jump to the first mistake
+const FIELDS = Object.keys(CHECKS); 
 
 const EMPTY = { firstName: "", lastName: "", username: "", email: "", password: "", confirm: "" };
 const initialsOf = (first, last) => `${first.trim()[0] || ""}${last.trim()[0] || ""}`.toUpperCase();
 
-// ---------- small pieces ----------
-// label + input + one line under it that shows the mistake, or the hint when there is none
+
 function TextField({ id, label, error, hint, ...input }) {
   const msg = `${id}-msg`;
   return (
@@ -87,7 +79,7 @@ function TextField({ id, label, error, hint, ...input }) {
   );
 }
 
-// the card that updates while you type: it is what the sidebar will show once you are in
+
 function FarmerCard({ first, last, username, avatarUri }) {
   const name = `${first.trim()} ${last.trim()}`.trim();
   const initials = initialsOf(first, last);
@@ -117,18 +109,18 @@ function FarmerCard({ first, last, username, avatarUri }) {
 
 export default function Register() {
   const [values, setValues] = useState(EMPTY);
-  const [touched, setTouched] = useState({}); // fields the person has left at least once
+  const [touched, setTouched] = useState({}); 
   const [submitted, setSubmitted] = useState(false);
-  const [serverErrors, setServerErrors] = useState({}); // from register()
+  const [serverErrors, setServerErrors] = useState({}); 
   const [formError, setFormError] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | saving | done
+  const [status, setStatus] = useState("idle"); 
   const [showPw, setShowPw] = useState(false);
-  const [avatar, setAvatar] = useState(null); // null = no avatar (initials are shown instead)
+  const [avatar, setAvatar] = useState(null); 
   const formRef = useRef(null);
   const avatarUri = useAvatarUri(avatar);
 
   const errors = Object.fromEntries(FIELDS.map((f) => [f, CHECKS[f](values[f], values)]));
-  // a mistake only shows after the person left the field (or pressed Create account), never while they are still typing the first time
+
   const shown = (f) => (touched[f] || submitted ? serverErrors[f] || errors[f] : "");
 
   const change = (f) => (e) => {
@@ -160,9 +152,9 @@ export default function Register() {
       await register({
         firstName: values.firstName.trim(),
         lastName: values.lastName.trim(),
-        username: values.username.trim().toLowerCase(), // lowercase, so "Juan" and "juan" are the same username
+        username: values.username.trim().toLowerCase(), 
         email: values.email.trim().toLowerCase(),
-        password: values.password, // never trimmed: spaces can be part of a password
+        password: values.password, 
         confirmPassword: values.confirm,
         avatar,
       });
@@ -188,7 +180,7 @@ export default function Register() {
           <img src={logo} alt="FarMe" className="fm-reg__logo" />
 
           {status === "done" ? (
-            // the account is made but nobody is logged in yet: the person goes to the login page
+           
             <div className="fm-reg__done" role="status">
               <h1 className="font-display text-3xl font-bold">Welcome to FarMe, {values.firstName.trim()}.</h1>
               <p>Your account is ready. Log in to set up your first field.</p>

@@ -59,11 +59,9 @@ import sproutHappy from "../../assets/sprout/happy.png";
 const MAX_DIM_M = 200;
 const MIN_DIM_M = 0.5;
 const MAX_CELLS = 2500;
-const MAX_NAME = 40; // longest field name (change this number to allow more or fewer characters)
-// the backend only accepts letters, numbers, spaces and these marks:  _ . ' ’ -   (see the name check in backend/app/schemas/slot.py)
+const MAX_NAME = 40; 
 const NAME_BAD = /[^\p{L}\p{N} _.'’-]/gu;
-// cleans a typed name to fit the backend rules. returns the cleaned text and, when something had to be
-// removed or cut, the warning to show in the limit dialog
+
 function checkName(raw) {
   const clean = raw.replace(NAME_BAD, "");
   if (clean !== raw)
@@ -87,16 +85,15 @@ function checkName(raw) {
     };
   return { value: raw, hit: null };
 }
-// a name that's already taken becomes "Field 1 - 2", "Field 1 - 3"... (no brackets, the backend doesn't allow them)
-// and the original is shortened if needed so the whole name still fits in MAX_NAME
+
 const withSuffix = (base, n) => {
   const tail = ` - ${n}`;
   return `${base.slice(0, MAX_NAME - tail.length).trimEnd()}${tail}`;
 };
 const CELL = 30; 
 const TROWEL_SIZE = 44; 
-const TROWEL_TIP = { x: 4, y: 4 }; // where the blade tip is inside the png, measured from its bottom-left corner. nudge if the tip feels off
-const MAX_PREVIEW = 365; // how many days ahead the growth slider can go
+const TROWEL_TIP = { x: 4, y: 4 }; 
+const MAX_PREVIEW = 365; 
 
 const PINE = "#202808";
 const KOMBU = "#33432B";
@@ -112,9 +109,7 @@ const STAGES = {
   ready: { label: "Ready to harvest", color: KOMBU },
 };
 
-/* ---------- helpers ---------- */
 
-// date helpers. i keep dates as yyyy-mm-dd strings so they save cleanly to a database
 const todayIso = () => new Date().toLocaleDateString("en-CA");
 const addDays = (iso, n) => {
   const d = new Date(`${iso}T00:00:00`);
@@ -124,12 +119,12 @@ const addDays = (iso, n) => {
 const daysBetween = (a, b) =>
   Math.round((new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`)) / 864e5);
 const fmt = (n) => String(Number(n.toFixed(2)));
-// philippine seasons: wet = june to november, dry = december to may
+
 const seasonNow = () =>
   new Date().getMonth() >= 5 && new Date().getMonth() <= 10
     ? { key: "wet", label: "Wet season", span: "Jun – Nov" }
     : { key: "dry", label: "Dry season", span: "Dec – May" };
-// checks a width / length the user typed and returns either a number or an error message
+
 function parseDim(text) {
   const t = text.trim().replace(",", ".");
   if (!t) return { error: "Enter a number." };
@@ -139,7 +134,7 @@ function parseDim(text) {
   if (value > MAX_DIM_M) return { error: `Max is ${MAX_DIM_M} m.`, limit: true };
   return { value };
 }
-// one square = one plant of any crop. squares get bigger on very big plots so the grid stays usable.
+
 function computeGrid(widthM, lengthM) {
   for (const size of [0.5, 1, 2, 5]) {
     const rows = Math.floor(widthM / size + 1e-9);
@@ -148,7 +143,6 @@ function computeGrid(widthM, lengthM) {
   }
   return { rows: 1, cols: 1, size: 5, capacity: 1 };
 }
-// how far along a plant is (sprout -> ready), from its age vs the crop's maturity days
 function getStage(plant, crop, asOf) {
   const age = daysBetween(plant.plantedOn, asOf);
   if (age < 0) return "planned";
@@ -158,8 +152,7 @@ function getStage(plant, crop, asOf) {
   if (ratio < 1) return "flowering";
   return "ready";
 }
-// reminders for the bell: harvest dates within the next 7 days (or already due),
-// grouped by slot + crop + date. this is placeholder logic, later it can come from the backend.
+
 function buildReminders(slots) {
   const groups = {};
   slots.forEach((s) =>
@@ -183,11 +176,7 @@ function buildReminders(slots) {
     .sort((a, b) => a.days - b.days);
 }
 
-/* ---------- watering + notifications ---------- */
 
-// my watering rule of thumb: early morning or before sunset is best. midday is too hot, and at night the leaves stay wet.
-// phases: morning 5-10, midday 10-16, evening 16-19, night 19+. before 5 i send nothing.
-// todo: if the rule changes (per crop, rain, soil moisture), only waterPhase / WATER_COPY need to change.
 const dayOf = (ms) => new Date(ms).toLocaleDateString("en-CA");
 function waterPhase(now) {
   const h = new Date(now).getHours();
@@ -225,8 +214,7 @@ const WATER_COPY = {
 };
 const wateredToday = (slot, now) => !!slot.lastWatered && dayOf(slot.lastWatered) === dayOf(now);
 
-// one notification per slot that still needs water today.
-// the id includes the phase, so every new phase is a new notification. that's how the "remind me again" works.
+
 function buildWaterNotifs(slots, now) {
   const phase = waterPhase(now);
   if (!phase) return [];
@@ -243,7 +231,7 @@ function buildWaterNotifs(slots, now) {
       slotId: s.id,
     }));
 }
-// todo(backend): the server should create these (scheduled job / push) so they also arrive when the app is closed.
+
 function buildNotifications(slots, now) {
   const harvests = buildReminders(slots).map((r) => ({
     id: `harvest-${r.id}`,
@@ -256,9 +244,7 @@ function buildNotifications(slots, now) {
   }));
   return [...buildWaterNotifs(slots, now), ...harvests];
 }
-/* ---------- weather + suggestions ---------- */
 
-// react hook: loads the weather whenever the coordinates change
 function useWeather(lat, lon) {
   const [state, setState] = useState({ data: null, loading: false });
   useEffect(() => {
@@ -268,7 +254,7 @@ function useWeather(lat, lon) {
     fetchWeather(lat, lon)
       .then((data) => live && setState({ data, loading: false }))
       .catch((e) => {
-        console.warn("[farme] weather failed:", e.message); // shows up in the browser console if something goes wrong
+        console.warn("[farme] weather failed:", e.message); 
         if (live) setState({ data: null, loading: false });
       });
     return () => {
@@ -278,7 +264,6 @@ function useWeather(lat, lon) {
   return state;
 }
 
-// fallback recommendations: scores every crop on soil, season and temperature, then returns the top 3
 function localRecommend({ soil, areaM2, season, weather }) {
   return CROPS.map((c) => {
     const why = [];
@@ -302,7 +287,7 @@ function localRecommend({ soil, areaM2, season, weather }) {
     .map(({ key, reason }) => ({ key, reason }));
 }
 
-// todo(backend): POST /recommend (set AI_ENDPOINT in farmeApi.js). the server prompts Claude and returns { recommendations: [{ key, reason }] }, using only the crop keys sent.
+
 async function getRecommendations(ctx) {
   const ai = await fetchRecommendations({
     ...ctx,
@@ -314,9 +299,6 @@ async function getRecommendations(ctx) {
   return { items: localRecommend(ctx), source: "rules" };
 }
 
-/* ---------- small ui pieces + the add slot flow ---------- */
-
-// placeholder picture of a field (swap it for a real image later, keep the size fixed)
 function SlotThumb() {
   return (
     <svg
@@ -351,10 +333,7 @@ function SlotThumb() {
   );
 }
 
-// weather + season in one bar: weather on the left, season on the right.
-// props: wx = { data, loading } from useWeather, season = { key, label, span } from seasonNow,
-//        onSetLocation = optional, shows a "set location" link when there's no weather
-// styles are in dashboard.css (.fm-conditions). the season half is kombu in the wet season and copper in the dry season.
+
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
@@ -684,10 +663,7 @@ function SlotTitle({ slot }) {
   );
 }
 
-/* ---------- location picker: search, current location, or drop a pin on the map ---------- */
 
-// leaflet (the map library) loads from a cdn the first time a map shows, so there's nothing to install ! what a nice
-// if it can't load (offline, blocked), the picker still works with search and "use my location".
 const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4";
 let leafletPromise = null;
 function loadLeaflet() {
@@ -702,7 +678,7 @@ function loadLeaflet() {
       js.src = `${LEAFLET}/leaflet.js`;
       js.onload = () => resolve(window.L);
       js.onerror = () => {
-        leafletPromise = null; // so it can try again next time
+        leafletPromise = null; 
         reject(new Error("map failed to load"));
       };
       document.head.appendChild(js);
@@ -711,14 +687,11 @@ function loadLeaflet() {
   return leafletPromise;
 }
 
-const PH_CENTER = [12.9, 122.8]; // the map starts on the philippines until a place is picked
-
-// the map. tap anywhere or drag the pin to choose the exact spot.
-// props: value = { lat, lon }, onPick(lat, lon) = called with the chosen spot
+const PH_CENTER = [12.9, 122.8]; 
 function PinMap({ value, onPick }) {
   const box = useRef(null);
-  const mapRef = useRef({}); // { map, marker } once the map is ready
-  const valueRef = useRef(value); // always the latest value, so a slow map load never uses an old one
+  const mapRef = useRef({}); 
+  const valueRef = useRef(value); 
   const pickRef = useRef(onPick);
   valueRef.current = value;
   pickRef.current = onPick;
@@ -771,7 +744,7 @@ function PinMap({ value, onPick }) {
     };
   }, []);
 
-  // move the pin when the spot changes from outside (search, "use my location")
+  
   useEffect(sync, [value.lat, value.lon]);
 
   if (failed)
@@ -790,16 +763,13 @@ function PinMap({ value, onPick }) {
   );
 }
 
-// location field: type to search places, use the device's location, or tap the map.
-// props: value = { text, lat, lon, place }, onChange = gets the new value, error = message under the field
+
 function LocationPicker({ value, onChange, error }) {
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState("idle"); // idle | loading | empty | error (so the user always sees what's going on)
+  const [status, setStatus] = useState("idle"); 
   const [locating, setLocating] = useState(false);
   const [note, setNote] = useState("");
-  const asked = useRef(0); // counts name lookups so only the newest answer gets used
-
-  // look up suggestions 300ms after the last key. nothing to look up once a place is picked.
+  const asked = useRef(0); 
   useEffect(() => {
     const q = value.text.trim();
     if (value.lat != null || q.length < 3) {
@@ -828,7 +798,7 @@ function LocationPicker({ value, onChange, error }) {
     };
   }, [value.text, value.lat]);
 
-  // typing again clears the picked place, so the coordinates always match the text
+ 
   const type = (text) => {
     asked.current++;
     setNote("");
@@ -841,7 +811,7 @@ function LocationPicker({ value, onChange, error }) {
     onChange({ text: r.label, lat: r.lat, lon: r.lon, place: r.label });
   };
 
-  // a spot from the map or the device: show it right away, then look up its name
+
   const setSpot = async (lat, lon) => {
     const id = ++asked.current;
     const coords = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
@@ -851,12 +821,12 @@ function LocationPicker({ value, onChange, error }) {
     try {
       label = await reverseGeocode(lat, lon);
     } catch {
-      /* no name found: keep the coordinates */
+      
     }
     if (label && id === asked.current) onChange({ text: label, lat, lon, place: label });
   };
 
-  // ask the browser for the device's location (needs https or localhost, plus the user's permission)
+  
   const useMyLocation = () => {
     if (!navigator.geolocation)
       return setNote(
@@ -948,8 +918,7 @@ function LocationPicker({ value, onChange, error }) {
   );
 }
 
-// "you hit a limit" dialog: says what the limit is and what we did about it
-// props: title, lines = array of sentences, onClose
+
 function LimitModal({ title, lines, onClose }) {
   return (
     <Modal title={title} onClose={onClose}>
@@ -986,7 +955,7 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
           place: slot.place ?? null,
         }
       : { text: "", lat: null, lon: null, place: null },
-  ); // the chosen location
+  ); 
   const [geoErr, setGeoErr] = useState("");
   const setLoc = (v) => {
     setGeoErr("");
@@ -995,26 +964,26 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   const [soil, setSoil] = useState(slot ? slot.soil : "");
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [limit, setLimit] = useState(null); // { title, lines, focusId }: the "you hit a limit" dialog
+  const [limit, setLimit] = useState(null); 
   const pw = parseDim(w);
   const pl = parseDim(l);
   const area = pw.value && pl.value ? pw.value * pl.value : null;
   const locError = !loc.text.trim() ? "Pick or search for your town or city." : "";
   const soilError = !soil ? "Pick a soil type." : "";
 
-  // close the limit dialog and put the cursor back in the field that caused it
+  
   const closeLimit = () => {
     const id = limit?.focusId;
     setLimit(null);
     if (id) setTimeout(() => document.getElementById(id)?.focus(), 0);
   };
-  // the name can't go past MAX_NAME: keep the first MAX_NAME characters and say why
+  
   const changeName = (e) => {
     const { value, hit } = checkName(e.target.value);
     setName(value);
     if (hit) setLimit({ focusId: "slot-name", ...hit });
   };
-  // a width / length past the biggest allowed size: use the biggest one and say why
+  
   const changeDim = (label, id, setValue) => (e) => {
     const text = e.target.value;
     const t = text.trim().replace(",", ".");
@@ -1033,7 +1002,7 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   const submit = async (e) => {
     e.preventDefault();
     setTried(true);
-    // too small / too big: the red message stays under the field, and this dialog explains the range
+   
     const hit = [
       ["Width", pw, "slot-w"],
       ["Length", pl, "slot-l"],
@@ -1048,16 +1017,16 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
     }
     if (pw.error || pl.error || locError || soilError) return;
     setBusy(true);
-    // use the picked place if there is one, otherwise try to find what was typed
+  
     let geo = loc.lat != null ? loc : null;
     if (!geo) {
       try {
         geo = await geocode(loc.text.trim());
       } catch {
-        /* offline: the slot still gets created,, just without weather */
+       
       }
     }
-    // when editing, a place i can't find is an error (para dili ma-lose ang weather location by accident)
+    
     if (editing && !geo) {
       setBusy(false);
       return setGeoErr("We couldn't find that place. Pick one from the suggestions.");
@@ -1072,7 +1041,7 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
       lon: geo?.lon ?? null,
       place: geo?.place ?? null,
     });
-    setBusy(false); // when editing, the form stays open under the "save changes?" dialog
+    setBusy(false); 
   };
 
   const err = (id, show, text) => (
@@ -1150,7 +1119,7 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   );
 }
 
-/* step 2: success summary */
+
 function SuccessModal({ slot, onProceed, onClose }) {
   return (
     <Modal title="Slot created successfully!" onClose={onClose}>
@@ -1173,7 +1142,7 @@ function SuccessModal({ slot, onProceed, onClose }) {
   );
 }
 
-/* step 3: slot details + recommended crops */
+
 function SlotDetailModal({ slot, wx, onPick, onClose }) {
   const [recs, setRecs] = useState(null);
   useEffect(() => {
@@ -1251,16 +1220,16 @@ function SlotDetailModal({ slot, wx, onPick, onClose }) {
   );
 }
 
-// the notification bell in the header + its dropdown (watering and harvest reminders).
+
 function ReminderBell({ notifs, loading, onRead, onReadAll, onDelete, onDeleteAll, onOpen }) {
-  // the Mailbox on the home page links to /dashboard#notifications: open the list when the page is reached that way
+  
   const wantsMail = () => window.location.hash === "#notifications";
   const [open, setOpen] = useState(wantsMail);
   useEffect(() => {
     const check = () => {
       if (!wantsMail()) return;
       setOpen(true);
-      // drop the hash so a refresh doesn't pop the list open again
+      
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
     };
     check();
@@ -1379,7 +1348,7 @@ function ReminderBell({ notifs, loading, onRead, onReadAll, onDelete, onDeleteAl
   );
 }
 
-// the planting grid. every square is clickable and shows the crop's emoji + its growth stage color
+
 function PlotGrid({
   grid,
   plantMap,
@@ -1393,8 +1362,6 @@ function PlotGrid({
   picked,
 }) {
   const { rows, cols } = grid;
-  // drag with the trowel to select a block of squares. box = { start, end } while the mouse is down.
-  // a drag that ends on the square it started on is just a click, so the click handler on the square toggles it.
   const svgRef = useRef(null);
   const startRef = useRef(null);
   const [box, setBox] = useState(null);
@@ -1411,13 +1378,11 @@ function PlotGrid({
   const dragging = box !== null;
   useEffect(() => {
     if (!dragging) return;
-    // window listeners, so the drag keeps working when the mouse leaves the grid
     const move = (e) => setBox({ start: startRef.current, end: cellAt(e) });
     const up = (e) => {
       const end = cellAt(e);
       const start = startRef.current;
       setBox(null);
-      // shift / ctrl / cmd while dragging adds to the selection, a plain drag starts a new one
       if (start.row !== end.row || start.col !== end.col)
         onBox(start, end, e.shiftKey || e.ctrlKey || e.metaKey);
     };
@@ -1430,9 +1395,9 @@ function PlotGrid({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", cancel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [dragging]);
-  // where the mouse is, so the trowel image can follow it (touch screens have no pointer to follow)
+  
   const [ptr, setPtr] = useState(null);
   const onKeyDown = (e) => {
     const map = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
@@ -1459,8 +1424,8 @@ function PlotGrid({
       const plant = plantMap.get(`${row}-${col}`);
       const crop = plant ? cropByKey(plant.cropKey) : null;
       const isSel = selected && selected.row === row && selected.col === col;
-      const lifted = !!(plant && carry.some((c) => c.id === plant.id)); // plants on the trowel fade in their old squares
-      const isPicked = !!(plant && picked.includes(plant.id)); // plants selected with the trowel get a copper ring and a check
+      const lifted = !!(plant && carry.some((c) => c.id === plant.id)); 
+      const isPicked = !!(plant && picked.includes(plant.id)); 
       cells.push(
         <g
           key={`${row}-${col}`}
@@ -1578,7 +1543,6 @@ function PlotGrid({
           margin: "0 auto",
           maxWidth: "none",
           cursor: tool ? "none" : undefined,
-          // with the trowel, dragging selects squares instead of scrolling the page
           touchAction: canDrag ? "none" : undefined,
           userSelect: "none",
         }}
@@ -1603,7 +1567,7 @@ function PlotGrid({
           />
         )}
       </svg>
-      {/* the trowel is the cursor while it's picked. if it holds plants, the first emoji (and how many) rides along */}
+      {}
       {tool && ptr && (
         <div
           aria-hidden="true"
@@ -1645,12 +1609,11 @@ function Stat({ label, value, hint }) {
   );
 }
 
-/* harvest dialog for one or more ready plants: harvest and keep them (they grow again) or harvest and remove them */
+
 function HarvestModal({ plants, onSubmit, onClose }) {
   const [amount, setAmount] = useState("");
   const [action, setAction] = useState("keep");
   const many = plants.length > 1;
-  // "🍅 Kamatis ×3, 🍆 Talong ×1"
   const summary = Object.values(
     plants.reduce((acc, p) => {
       const crop = cropByKey(p.cropKey);
@@ -1732,14 +1695,10 @@ function HarvestModal({ plants, onSubmit, onClose }) {
   );
 }
 
-/* ---------- main ---------- */
 
-// main screen: owns all the state and wires the nav, header, slot list, slot view and modals together
 export default function FarMeDashboard() {
-  // state: slots = all saved fields, loaded = the db finished loading
   const [slots, setSlots] = useState([]);
   const [loaded, setLoaded] = useState(false);
-  // the loading skeleton only appears if the load is actually slow (over 150 ms), so a quick load never flashes it
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setSlow(true), 150);
@@ -1747,39 +1706,36 @@ export default function FarMeDashboard() {
   }, []);
   const ready = loaded;
   const [openId, setOpenId] = useState(null);
-  const [editingId, setEditingId] = useState(null); // the card whose name is being edited
-  const [renameText, setRenameText] = useState(""); // what is typed in that name box
-  const [renameAsk, setRenameAsk] = useState(null); // "save" | "leave": the dialog asking what to do with the new name
-  const [renameLimit, setRenameLimit] = useState(null); // { title, lines }: the name limit warning
+  const [editingId, setEditingId] = useState(null); 
+  const [renameText, setRenameText] = useState(""); 
+  const [renameAsk, setRenameAsk] = useState(null); 
+  const [renameLimit, setRenameLimit] = useState(null); 
   const [renameBusy, setRenameBusy] = useState(false);
-  const askingRef = useRef(false); // true while a dialog sits over the name box, so the box losing focus doesn't count as leaving
+  const askingRef = useRef(false); 
   const [showAdd, setShowAdd] = useState(false);
-  const [showEdit, setShowEdit] = useState(false); // edit the open slot
-  const [pendingEdit, setPendingEdit] = useState(null); // { data, changes }: edits waiting for "save these changes?"
-  const [updated, setUpdated] = useState(null); // { name }: the "slot updated" dialog shown after the edits are saved
-  const [confirm, setConfirm] = useState(null); // { type: "plant" | "notif" | "notifs", id? }: a delete waiting for a yes / no
-  const [toDelete, setToDelete] = useState(null); // the slot waiting for a yes / no
-  const [harvesting, setHarvesting] = useState(null); // ids of the plants in the harvest dialog
-  const [flow, setFlow] = useState(null); // { step: "success" | "detail", id }
-  // brush = the crop that gets planted when an empty square is clicked
-  const [brush, setBrush] = useState(null); // the crop key chosen for planting
+  const [showEdit, setShowEdit] = useState(false); 
+  const [pendingEdit, setPendingEdit] = useState(null); 
+  const [updated, setUpdated] = useState(null); 
+  const [confirm, setConfirm] = useState(null); 
+  const [toDelete, setToDelete] = useState(null); 
+  const [harvesting, setHarvesting] = useState(null); 
+  const [brush, setBrush] = useState(null); 
   const [selected, setSelected] = useState(null);
-  const [tool, setTool] = useState(null); // "trowel" while the trowel is picked
-  const [picked, setPicked] = useState([]); // ids of the plants selected with the trowel (select as many as you like)
-  const [carry, setCarry] = useState([]); // ids of the plants the trowel is holding, to put down together
-  const [toolMsg, setToolMsg] = useState(""); // short message about what the trowel just did
-  const [blocked, setBlocked] = useState(null); // { taken, outside } when plants can't be put down where you clicked
+  const [tool, setTool] = useState(null); 
+  const [picked, setPicked] = useState([]); 
+  const [carry, setCarry] = useState([]); 
+  const [toolMsg, setToolMsg] = useState(""); 
+  const [blocked, setBlocked] = useState(null); 
   const [plantedOn, setPlantedOn] = useState(todayIso());
   const [preview, setPreview] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [notice, setNotice] = useState(null); // { title, lines }: in-app replacement for the browser alert()
-  const plantingRef = useRef(false); // true while a plant request is in flight, so a double click can't plant twice
+  const [notice, setNotice] = useState(null); 
+  const plantingRef = useRef(false); 
 
-  // one place for every error message: a friendly dialog instead of the browser's alert()
+
   const showError = (error, fallback, title = "Something went wrong") => {
     const msg = error?.message || fallback;
     if (/already occupied/i.test(msg)) {
-      // the screen was out of date: reload the slots so the grid shows what is really planted
       getSlots().then(setSlots).catch(() => {});
       return setNotice({
         title: "That square is taken",
@@ -1819,25 +1775,24 @@ export default function FarMeDashboard() {
     return () => clearInterval(t);
   }, [playing]);
 
-  // the signed-in user
-  // GET /auth/me through getUser() in the api file. username is the greeting.
-  const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); // empty until getUser answers, so no placeholder name shows
+  
+  const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); 
+  const [flow, setFlow] = useState(null);
   useEffect(() => {
     getUser()
       .then(setUser)
       .catch((error) => console.error("Failed to load the signed-in user:", error));
   }, []);
 
-  // slot = the slot being viewed, flowSlot = the one in the add-slot modals
+  
   const slot = slots.find((s) => s.id === openId) || null;
   const flowSlot = flow ? slots.find((s) => s.id === flow.id) || null : null;
-  // weather is only needed when a slot is open (or in its modal), not on the main dashboard
   const wxSlot = flowSlot || slot || null;
   const wx = useWeather(wxSlot?.lat, wxSlot?.lon);
   const season = seasonNow();
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
-  // grid size, planted squares (by row-col), and the selected square's plant
+  
   const grid = useMemo(
     () => (slot ? computeGrid(slot.widthM, slot.lengthM) : null),
     [slot?.widthM, slot?.lengthM],
@@ -1852,7 +1807,6 @@ export default function FarMeDashboard() {
   const brushCrop = cropByKey(brush);
   const carryPlants = slot ? slot.plants.filter((p) => carry.includes(p.id)) : [];
   const pickedPlants = slot ? slot.plants.filter((p) => picked.includes(p.id)) : [];
-  // only plants that are ready today can be harvested (not ones that are only ready in the growth preview)
   const readyPlants = slot
     ? slot.plants.filter((p) => getStage(p, cropByKey(p.cropKey), todayIso()) === "ready")
     : [];
@@ -1862,13 +1816,13 @@ export default function FarMeDashboard() {
     setPicked([]);
   };
 
-  // the trowel message fades by itself
+ 
   useEffect(() => {
     if (!toolMsg) return;
     const t = setTimeout(() => setToolMsg(""), 4000);
     return () => clearTimeout(t);
   }, [toolMsg]);
-  // esc: put the plants back first, then clear the selection, then put the trowel away
+  
   useEffect(() => {
     if (!tool) return;
     const onKey = (e) => {
@@ -1890,7 +1844,7 @@ export default function FarMeDashboard() {
     return name;
   };
 
-  // ---- renaming from a card: nothing is saved until the person confirms ----
+
   const renameSlot = editingId ? slots.find((x) => x.id === editingId) : null;
   const renameChanged =
     !!renameSlot && renameText.trim() !== "" && renameText.trim() !== renameSlot.name;
@@ -1980,7 +1934,7 @@ export default function FarMeDashboard() {
   };
 
 
-  // open a slot's grid and reset the selection + growth preview
+ 
   const openSlot = (id) => {
     setOpenId(id);
     setSelected(null);
@@ -1990,7 +1944,7 @@ export default function FarMeDashboard() {
     setPlaying(false);
   };
 
-  // 'plant this crop' in the detail modal: select that crop and go to the grid
+  
   const pickRecommended = (key) => {
     setBrush(key);
     openSlot(flow.id);
@@ -2011,7 +1965,6 @@ export default function FarMeDashboard() {
 
     if (tool === "trowel") return trowelClick(cell, here);
     if (!brush) return;
-    // a crop is chosen and this square already has a plant: say so instead of doing nothing
     if (here) {
       return setNotice({
         title: "That square is taken",
@@ -2041,11 +1994,9 @@ export default function FarMeDashboard() {
   }
 };
 
-  // the trowel works like a gallery: click plants to select or unselect them, as many as you like.
-  // then move them together, harvest the ready ones, or throw them away (buttons in the side panel)
+
   const trowelClick = (cell, here) => {
     if (carryPlants.length) return placeGroup(cell);
-    // plants are selected and you click an empty square: move the selection there (no need to press Move first)
     if (!here && pickedPlants.length) return placeGroup(cell, pickedPlants);
     if (!here) return;
     setPicked((ids) =>
@@ -2061,8 +2012,6 @@ export default function FarMeDashboard() {
 
     if (!group.length) return;
 
-    // empty rows and columns between the selected plants are squeezed out, so gaps never block the move.
-    // each plant keeps its order and neighbours; the top left plant lands on the square you clicked.
     const rank = (values) => new Map([...new Set(values)].sort((a, b) => a - b).map((v, i) => [v, i]));
     const rowRank = rank(group.map((p) => p.row));
     const colRank = rank(group.map((p) => p.col));
@@ -2071,7 +2020,7 @@ export default function FarMeDashboard() {
       col: cell.col + colRank.get(p.col) - colRank.get(group[0].col),
     });
 
-    // clicking so that nothing changes puts them back where they were
+    
     if (group.every((p) => target(p).row === p.row && target(p).col === p.col)) {
       setCarry([]);
       return setToolMsg("Put back where they were.");
@@ -2123,8 +2072,7 @@ export default function FarMeDashboard() {
     }
   };
   
-  // drag-select: a plain drag starts a new selection with the plants inside the box (an empty box clears it).
-  // holding shift / ctrl / cmd adds the plants to the selection i already have.
+
   const selectBox = (a, b, add) => {
     const r1 = Math.min(a.row, b.row);
     const r2 = Math.max(a.row, b.row);
@@ -2264,14 +2212,13 @@ export default function FarMeDashboard() {
     ? slot.plants.reduce((m, p) => ({ ...m, [p.cropKey]: (m[p.cropKey] || 0) + 1 }), {})
     : {};
 
-  // notifications for the bell (see buildNotifications near the top of this file).
-  // "now" ticks every minute so the watering reminders change as the time of day changes.
+ 
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(t);
   }, []);
-  // read / deleted marks are saved per user on the server (GET / PATCH / DELETE /notifications)
+ 
   const [nstate, setNstate] = useState({ read: {}, deleted: {} });
   const [nLoaded, setNLoaded] = useState(false);
   useEffect(() => {
@@ -2281,7 +2228,7 @@ export default function FarMeDashboard() {
       .finally(() => setNLoaded(true));
   }, []);
   const allNotifs = useMemo(() => buildNotifications(slots, now), [slots, now]);
-  // drop the marks of notifications that no longer exist, so the saved list doesn't grow forever
+  
   useEffect(() => {
     if (!loaded || !nLoaded) return;
     const ids = new Set(allNotifs.map((n) => n.id));
@@ -2298,7 +2245,7 @@ export default function FarMeDashboard() {
   const notifs = allNotifs
     .filter((n) => !nstate.deleted[n.id])
     .map((n) => ({ ...n, read: !!nstate.read[n.id] }));
-  // every action changes the screen first, then tells the server. if the server refuses, the marks are reloaded from it.
+ 
   const saveMarks = (requests) =>
     Promise.all(requests).catch((error) => {
       console.error("Failed to save the notification change:", error);
@@ -2349,8 +2296,7 @@ export default function FarMeDashboard() {
     }
   };
 
-  // edit slot: the form hands over the new values, i list what changed and ask before saving
-  // todo(backend): re-check the new size / name on the server too
+  
   const requestEdit = (data) => {
     let name = data.name;
     let n = 2;
@@ -2370,8 +2316,7 @@ export default function FarMeDashboard() {
     )
       changes.push(`Location: ${slot.place || slot.location} → ${next.place || next.location}`);
     if (next.soil !== slot.soil) changes.push(`Soil: ${slot.soil} → ${next.soil}`);
-    if (changes.length === 0) return setShowEdit(false); // nothing changed, so there's nothing to confirm
-    // a smaller plot can leave planted squares outside the new grid
+    if (changes.length === 0) return setShowEdit(false); 
     const oldGrid = computeGrid(slot.widthM, slot.lengthM);
     const newGrid = computeGrid(next.widthM, next.lengthM);
     const lost = slot.plants.filter((p) => p.row >= newGrid.rows || p.col >= newGrid.cols).length;
@@ -2434,7 +2379,7 @@ export default function FarMeDashboard() {
     }
   };
 
-  // deleting a plant or notification(s) always asks first (see confirmInfo + runConfirm)
+  
   const confirmPlants =
     confirm?.type === "plant" && slot ? slot.plants.filter((p) => confirm.ids.includes(p.id)) : [];
   const confirmInfo =
@@ -2470,7 +2415,6 @@ export default function FarMeDashboard() {
     setConfirm(null);
   };
 
-  // what the chatbot knows: the open slot (if any), the season and the weather
   const chatContext = {
     page: "dashboard",
     season: season.key,
@@ -2486,7 +2430,7 @@ export default function FarMeDashboard() {
 
   const emptyState = (
     <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 py-10">
-      {/* empty state image: i crop it because the png has blank space around the drawing. change w / ratio to resize, and the 40% to move the crop */}
+      {}
       <Img
         src={dashboardEmpty}
         alt=""
@@ -2657,7 +2601,7 @@ export default function FarMeDashboard() {
                             aria-label="Slot name"
                             className={`flex-1 min-w-0 border-[3px] border-[#202808] rounded-lg px-2 py-1`}
                             onBlur={() => {
-                              if (askingRef.current) return; // a dialog opened over it
+                              if (askingRef.current) return; 
                               if (!renameChanged) return endRename();
                               askRename("leave");
                             }}
@@ -2828,7 +2772,7 @@ export default function FarMeDashboard() {
                   />
                 </div>
                 <div className={`fm-panel p-4`} style={{ flex: "1 1 220px" }} aria-live="polite">
-                  {/* the trowel: select plants like in a gallery, then move, harvest or throw them away together */}
+                  {}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
                     <button
                       onClick={toggleTrowel}

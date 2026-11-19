@@ -4,8 +4,7 @@ import "./BgmPlayer.css";
 
 const VIDEO_ID = "_2rnKRoY1tw";
 
-// enabled = false keeps the player fully off (no YouTube script, no sound, no button).
-// pass true only once the visitor is signed in.
+
 export default function BgmPlayer({ showButton = true, enabled = true }) {
   const hostRef = useRef(null);
   const playerRef = useRef(null);
@@ -29,16 +28,15 @@ export default function BgmPlayer({ showButton = true, enabled = true }) {
     let cancelled = false;
     let armed = false;
 
-    // Browsers block sound until the visitor interacts with the page, so if the
-    // automatic start is blocked, the first click or key press anywhere starts it.
+    
     const onGesture = (e) => {
       const t = e.target;
-      if (t instanceof Element && t.closest(".fm-bgm")) return; // the button has its own handler
+      if (t instanceof Element && t.closest(".fm-bgm")) return; 
       if (userPausedRef.current) return;
       try {
         playerRef.current?.playVideo?.();
       } catch {
-        /* player not ready yet */
+        
       }
     };
     const arm = () => {
@@ -57,8 +55,6 @@ export default function BgmPlayer({ showButton = true, enabled = true }) {
       const host = hostRef.current;
       if (cancelled || !host || !window.YT || !window.YT.Player) return;
 
-      // YouTube replaces the element it is given, so hand it a fresh one each
-      // time (React never manages this node, so the two can't conflict).
       host.innerHTML = "";
       const mount = document.createElement("div");
       host.appendChild(mount);
@@ -72,13 +68,13 @@ export default function BgmPlayer({ showButton = true, enabled = true }) {
               if (cancelled) return;
               e.target.setVolume(volumeRef.current);
               setReady(true);
-              e.target.playVideo(); // play by default
-              arm(); // in case the browser blocks it
+              e.target.playVideo(); 
+              arm(); 
             },
             onStateChange: (e) => {
               if (cancelled) return;
               const S = window.YT.PlayerState;
-              if (e.data === S.ENDED) e.target.playVideo(); // backup loop
+              if (e.data === S.ENDED) e.target.playVideo(); 
               if (e.data === S.PLAYING) {
                 setPlaying(true);
                 disarm();
@@ -110,7 +106,7 @@ export default function BgmPlayer({ showButton = true, enabled = true }) {
       try {
         playerRef.current?.destroy?.();
       } catch {
-        /* already gone */
+        
       }
       playerRef.current = null;
       setReady(false);
@@ -125,12 +121,12 @@ export default function BgmPlayer({ showButton = true, enabled = true }) {
     try {
       localStorage.setItem("fm-bgm-volume", String(v));
     } catch {
-      /* storage unavailable */
+      
     }
     try {
       playerRef.current?.setVolume?.(v);
     } catch {
-      /* player not ready yet */
+      
     }
   };
 
@@ -138,7 +134,7 @@ export default function BgmPlayer({ showButton = true, enabled = true }) {
     const p = playerRef.current;
     if (!p || !ready) return;
     if (playing) {
-      userPausedRef.current = true; // stay paused until the visitor presses play
+      userPausedRef.current = true; 
       p.pauseVideo();
     } else {
       userPausedRef.current = false;
@@ -170,7 +166,7 @@ export default function BgmPlayer({ showButton = true, enabled = true }) {
             )}
           </button>
 
-          {/* volume pill: appears when you hover (or tab to) the button */}
+          {}
           <div className="fm-bgm-vol">
             <div className="fm-bgm-vol__pill">
               <input

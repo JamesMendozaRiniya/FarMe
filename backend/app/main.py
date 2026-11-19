@@ -4,19 +4,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.database import Base, engine
-from app.models import (
-    User,
-    Slot,
-    Plant,
-    Harvest,
-    Note,
-    Watering,
-    NotificationState,
-    Crop,
-    PasswordReset,
-    ChatConversation,
-    ChatMessage
-)
+import app.models
 from app.routers.auth import router as auth_router
 from app.routers.slots import router as slots_router
 from app.routers.plants import router as plants_router
@@ -34,15 +22,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=[
+        "http://localhost:5173",
+        settings.FRONTEND_URL
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
-
 
 app.include_router(auth_router)
 app.include_router(slots_router)
@@ -54,7 +43,6 @@ app.include_router(notifications_router)
 app.include_router(crops_router)
 app.include_router(users_router)
 app.include_router(ai_router)
-
 
 Base.metadata.create_all(bind=engine)
 

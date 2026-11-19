@@ -1,19 +1,5 @@
-// what the dashboard uses:
-//   key        short id. saved with every planted square, so please never rename it :D
-//   name, en   local name and english name
-//   emoji      shown in the palette and on the grid
-//   type       "vegetable" or "fruit" (decides which list it shows under)
-//   maturity   rough days from planting to harvest (stage colors, harvest date and reminders use it)
-//   soils      soils it grows well in (the recommendation rules match against these)
-//   seasons    "wet" and / or "dry" (june to november is wet, december to may is dry)
-//   temp       [min, max] comfortable temperature in celsius
-//   big        optional. true for trees / big plants, so tiny plots get a lower score
-// todo(backend): later this can become a crops table with key as the id.
-
-// soil types for the add slot form
 export const SOILS = ["Clay", "Loam", "Sandy", "Silty"];
 
-// 5 vegetables + 5 fruits common here sa philippines (the numbers are rough, not exact)
 export const CROPS = [
   {
     key: "kamatis",
@@ -130,5 +116,5 @@ export const CROPS = [
   },
 ];
 
-// finds a crop by its key, or null if there's no such crop
+
 export const cropByKey = (key) => CROPS.find((c) => c.key === key) || null;

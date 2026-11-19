@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>farme</title>
     <style>
-      /* the loading sprout. it lives here in <head> (not inside #root) so React can't wipe its styles when it mounts */
+      
       .fm-boot {
         position: fixed;
         inset: 0;
@@ -59,12 +59,12 @@
       </div>
     </div>
 
-    <!-- keeps the sprout on screen until this page has finished loading its data (all pages except login, register, forgot and reset) -->
+    
     <script>
       (function () {
-        var MIN_MS = 500; // show the sprout at least this long so it never just flashes
-        var IDLE_MS = 250; // how long with no requests running counts as "finished loading"
-        var MAX_MS = 8000; // never keep the page covered longer than this
+        var MIN_MS = 500; 
+        var IDLE_MS = 250; 
+        var MAX_MS = 8000; 
         if (/^\/(login|register|forgot-password|reset-password)/.test(location.pathname)) return;
 
         var root = document.getElementById("root");
@@ -91,11 +91,11 @@
         function check() {
           clearTimeout(idleTimer);
           if (done) return;
-          var mounted = !root.querySelector(".fm-boot"); // React has replaced the first loader
+          var mounted = !root.querySelector(".fm-boot"); 
           if (mounted && pending === 0) idleTimer = setTimeout(function () { if (pending === 0) hide(); }, IDLE_MS);
         }
 
-        // count requests that are still running (fetch and XMLHttpRequest, so it works whichever the app uses)
+       
         var nativeFetch = window.fetch;
         if (nativeFetch) {
           window.fetch = function () {
