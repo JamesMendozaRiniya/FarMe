@@ -1,11 +1,8 @@
-// the avatar maker on the register page. it only edits the avatar object (see avatar.js):
-//   <AvatarStudio avatar={avatar} onChange={setAvatar} onRemove={() => setAvatar(null)} />
-// the big preview is the farmer card next to the form, so this part shows small style pictures only.
 import { Shuffle, Trash2, Check } from "lucide-react";
 import { AVATAR_STYLES, AVATAR_BACKGROUNDS, newSeed, useAvatarUri } from "./avatar";
 import "./avatar-studio.css";
 
-// one style, drawn with the current seed and background so you see what you would get
+
 function StyleButton({ style, avatar, onPick }) {
   const uri = useAvatarUri({ ...avatar, style: style.key });
   const on = avatar.style === style.key;

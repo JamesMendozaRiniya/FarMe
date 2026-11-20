@@ -32,7 +32,7 @@
   width: 100%;
   height: auto;
   min-height: 24rem;
-  overflow: visible; /* the sky and ground are drawn past the picture so they can fill the extra room */
+  overflow: visible; 
 }
 .fm-home__spot {
   cursor: pointer;
@@ -67,7 +67,7 @@
     fill 0.2s ease,
     stroke 0.2s ease;
 }
-/* minimalist labels: smaller, lighter, a little spaced out */
+
 .fm-home__tag text {
   font-family: inherit;
   font-size: 12.5px;
@@ -75,7 +75,7 @@
   letter-spacing: 0.02em;
   fill: rgba(32, 40, 8, 0.85);
 }
-/* the lighter note after the name, like "Farm · 3 fields" */
+
 .fm-home__tag text .fm-home__sub {
   font-weight: 500;
   fill: rgba(32, 40, 8, 0.6);
@@ -97,11 +97,11 @@
     --s: 1.6;
   }
 }
-/* your png / gif art. if it is pixel art and looks blurry, add: image-rendering: pixelated; */
+
 .fm-home__img {
   pointer-events: none;
 }
-/* far away things look softer: the mountains lose a little color so they blend into the sky */
+
 .fm-home__far {
   filter: saturate(0.7) brightness(1.08);
   opacity: 0.92;
@@ -182,10 +182,10 @@
     transition: none;
   }
 }
-/* the tall scene (phones and tablets). it is only 400 wide inside, so the labels need less scaling than on the wide scene */
+
 .fm-home__svg--m {
   min-height: 0;
-  overflow: visible; /* the sky and ground are drawn past the picture, so they can fill a tall screen */
+  overflow: visible; 
 }
 .fm-home__svg--m .fm-home__tag {
   --s: 1.15;
@@ -195,7 +195,7 @@
     --s: 0.95;
   }
 }
-/* big tablets held upright (iPad Pro): the tall scene is drawn large there, so the labels shrink a little */
+
 @media (min-width: 900px) {
   .fm-home__svg--m .fm-home__tag {
     --s: 0.7;

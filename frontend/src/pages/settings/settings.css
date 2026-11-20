@@ -15,7 +15,7 @@
   align-items: center;
   gap: 0.5rem;
 }
-/* the delete card is red-edged */
+
 .fm-set__card--danger {
   border-color: var(--danger);
   box-shadow: 4px 4px 0 var(--danger);
@@ -35,7 +35,7 @@
   }
 }
 
-/* the avatar preview (the same round picture as the farmer card on the register page) */
+
 .fm-set__avatar {
   display: flex;
   align-items: center;
@@ -72,7 +72,7 @@
   }
 }
 
-/* the save button and the "saved" line next to it */
+
 .fm-set__actions {
   display: flex;
   flex-wrap: wrap;
@@ -91,7 +91,7 @@
   color: var(--dingley);
 }
 
-/* a field with a mistake, and a mistake that is not about one field */
+
 .fm-set__bad {
   border-color: var(--danger);
 }
@@ -102,7 +102,7 @@
   border-radius: 0.75rem;
 }
 
-/* the password rules under the new password field */
+
 .fm-set__rules {
   display: flex;
   flex-wrap: wrap;
@@ -150,7 +150,7 @@
   }
 }
 
-/* ---------- the two columns ---------- */
+
 .fm-set__layout {
   display: grid;
   gap: 1.25rem;
@@ -168,13 +168,13 @@
     align-items: start;
     gap: 2rem;
   }
-  /* the big picture is on the card now, so the small one in Profile is not needed */
+
   .fm-set__pic {
     display: none;
   }
 }
 
-/* ---------- the farmer card (same look as the one on the register page) ---------- */
+
 .fm-set-id {
   position: relative;
   min-width: 0;
@@ -183,7 +183,7 @@
   border-radius: 1.1rem;
   box-shadow: 6px 6px 0 var(--pine);
 }
-/* the stitched edge */
+
 .fm-set-id::after {
   content: "";
   position: absolute;
@@ -192,7 +192,7 @@
   border-radius: 0.75rem;
   pointer-events: none;
 }
-/* the hole for the lanyard: the page color shows through it */
+
 .fm-set-id__slot {
   display: none;
   width: 3.4rem;
@@ -265,7 +265,7 @@
   opacity: 0.55;
 }
 
-/* big screens: the card stays in view while you scroll the forms */
+
 @media (min-width: 1024px) {
   .fm-set-id {
     position: sticky;
@@ -296,7 +296,7 @@
   }
 }
 
-/* "forgot your password?" under the fields that ask for the current password */
+
 .fm-set__forgot {
   margin-top: 0.15rem;
   font-size: 0.9rem;
@@ -311,7 +311,7 @@
   outline-offset: 2px;
 }
 
-/* the goodbye after the account is deleted */
+
 .fm-set__bye {
   display: flex;
   flex-direction: column;

@@ -1,13 +1,12 @@
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export const AI_ENDPOINT = null;
 export const CHAT_ENDPOINT = null;
 
-// keys the first (local-only) version of the app used. nothing reads them anymore,
-// they are only cleared when an account is deleted.
+
 const LEGACY_LOCAL_KEYS = ["farme.slots.v2", "farme.notifs.v1", "farme.chat.v1"];
 
-// ---------- API REQUEST ----------
+
 
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -51,7 +50,7 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
-// ---------- SLOTS ----------
+
 
 export async function getSlots() {
   return apiRequest("/slots");
@@ -77,7 +76,7 @@ export async function deleteSlotAPI(id) {
   });
 }
 
-// ---------- PLANTS ----------
+
 
 export async function createPlantAPI(slotId, plant) {
   return apiRequest(`/slots/${slotId}/plants`, {
@@ -99,7 +98,7 @@ export async function deletePlantAPI(plantId) {
   });
 }
 
-// ---------- HARVESTS ----------
+
 
 export async function createHarvestAPI(slotId, harvest) {
   return apiRequest(`/slots/${slotId}/harvests`, {
@@ -121,7 +120,7 @@ export async function deleteHarvestAPI(harvestId) {
   });
 }
 
-// ---------- NOTES ----------
+
 
 export async function createNoteAPI(slotId, note) {
   return apiRequest(`/slots/${slotId}/notes`, {
@@ -143,7 +142,7 @@ export async function deleteNoteAPI(noteId) {
   });
 }
 
-// ---------- WATERING ----------
+
 
 export async function logWatering(slotId, at) {
   return apiRequest(`/slots/${slotId}/waterings`, {
@@ -152,7 +151,7 @@ export async function logWatering(slotId, at) {
   });
 }
 
-// ---------- NOTIFICATIONS (read / deleted marks, saved per user) ----------
+
 
 export async function getNotificationStates() {
   const rows = await apiRequest("/notifications");
@@ -180,7 +179,7 @@ export async function deleteNotificationAPI(notifId) {
   });
 }
 
-// ---------- ACCOUNT: REGISTER ----------
+
 
 export async function register(payload) {
   return apiRequest("/auth/register", {
@@ -197,7 +196,7 @@ export async function register(payload) {
   });
 }
 
-// ---------- ACCOUNT: LOGIN ----------
+
 
 export async function login(payload) {
   return apiRequest("/auth/login", {
@@ -209,7 +208,6 @@ export async function login(payload) {
   });
 }
 
-// ---------- ACCOUNT: PASSWORD RESET ----------
 
 export async function forgotPassword(payload) {
   return apiRequest("/auth/forgot-password", {
@@ -230,7 +228,7 @@ export async function resetPassword(payload) {
   });
 }
 
-// ---------- ACCOUNT: USER ----------
+
 
 export async function getUser() {
   const user = await apiRequest("/auth/me");
@@ -247,7 +245,6 @@ export async function getUser() {
   };
 }
 
-// ---------- ACCOUNT: SETTINGS ----------
 
 async function settingsRequest(path, options = {}) {
   try {
@@ -308,24 +305,28 @@ export async function deleteAccount(payload) {
     try {
       localStorage.removeItem(key);
     } catch {
-      // storage can be blocked, nothing to clean then
+     
     }
   });
 
   return result;
 }
 
-// ---------- ACCOUNT: LOGOUT ----------
+
 
 export async function logout() {
-  await apiRequest("/auth/logout", {
-    method: "POST",
-  });
-
-  window.location.assign("/login");
+  try {
+    await apiRequest("/auth/logout", {
+      method: "POST",
+    });
+  } finally {
+    localStorage.removeItem("farme.chat.v1");
+    localStorage.removeItem("fm-user");
+    window.location.assign("/login");
+  }
 }
 
-// ---------- LOCATION + WEATHER ----------
+
 
 const COUNTRY = "PH";
 
@@ -444,7 +445,7 @@ export async function reverseGeocode(lat, lon) {
   );
 }
 
-// ---------- WEATHER ----------
+
 
 const WMO = (code) =>
   code === 0
@@ -461,16 +462,14 @@ const WMO = (code) =>
 
 export async function fetchWeather(lat, lon) {
   const response = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&forecast_days=3&timezone=auto`
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code`
   );
 
   if (!response.ok) {
     throw new Error(`weather failed (${response.status})`);
   }
 
-  const data = await response.json();
-  const current = data.current;
-  const daily = data.daily;
+  const current = (await response.json()).current;
 
   if (!current) {
     throw new Error("weather response had no data");
@@ -483,26 +482,9 @@ export async function fetchWeather(lat, lon) {
     humidity: current.relative_humidity_2m,
     label,
     emoji,
-
-    forecast: (daily?.time || []).map((date, index) => {
-      const [forecastLabel, forecastEmoji] = WMO(
-        daily.weather_code[index]
-      );
-
-      return {
-        date,
-        label: forecastLabel,
-        emoji: forecastEmoji,
-        maxTemp: Math.round(daily.temperature_2m_max[index]),
-        minTemp: Math.round(daily.temperature_2m_min[index]),
-        rainChance: daily.precipitation_probability_max[index],
-        rainAmount: daily.precipitation_sum[index],
-      };
-    }),
   };
 }
 
-// ---------- AI: CROP SUGGESTIONS ----------
 
 export async function fetchRecommendations(ctx) {
   if (!AI_ENDPOINT) return null;
@@ -530,16 +512,11 @@ export async function fetchRecommendations(ctx) {
   }
 }
 
-// ---------- AI: CHATBOT ----------
 
 
 
-export async function sendChat({ messages, context }) {
-  const latestUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "user")?.content;
-
-  if (!latestUserMessage) {
+export async function sendChat({ message, conversationId = null }) {
+  if (!message?.trim()) {
     throw new Error("No user message provided.");
   }
 
@@ -557,8 +534,8 @@ export async function sendChat({ messages, context }) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        message: latestUserMessage,
-        context: context || {},
+        message: message.trim(),
+        conversation_id: conversationId,
       }),
       signal: controller.signal,
     });
@@ -569,7 +546,10 @@ export async function sendChat({ messages, context }) {
       throw new Error(data.detail || "Failed to get AI response.");
     }
 
-    return data.response;
+    return {
+      response: data.response,
+      conversationId: data.conversation_id,
+    };
   } catch (error) {
     if (error.name === "AbortError") {
       throw new Error("The AI response took too long. Please try again.");
@@ -583,7 +563,8 @@ export async function sendChat({ messages, context }) {
 
 
 
-// ---------- CROP LIBRARY ----------
+
+
 
 export async function getCrops(search = "", category = "") {
   const params = new URLSearchParams();

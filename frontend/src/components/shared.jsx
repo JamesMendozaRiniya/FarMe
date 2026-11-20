@@ -1,9 +1,5 @@
-// the pieces every page can call: Img, Sidebar (collapsible nav) and ChatHead (floating chat bubble) :D
-// how to use them on any page:
-//   <Sidebar active="library" user={user} />
-//   <ChatHead context={{ page: "library" }} />
-import ReactMarkdown from "react-markdown";
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   Menu,
   ChevronsLeft,
@@ -20,7 +16,7 @@ import {
 } from "lucide-react";
 import "./shared.css";
 import { logout, sendChat } from "../services/farmeApi";
-import { useAvatarUri } from "./avatar";
+import { useAvatarUri, clearAvatarCache } from "./avatar";
 
 import sidebarLogo from "../assets/sidebar-logo.png";
 import sidebarHome from "../assets/sidebar-home.png";
@@ -29,10 +25,6 @@ import sidebarLibrary from "../assets/sidebar-library.png";
 import sidebarSettings from "../assets/sidebar-settings.png";
 import chatbot from "../assets/chatbot.png";
 
-// nav links. every tab is its own page, so these are real links.
-//   home      -> Dashboard (home.jsx)      <Sidebar active="home" />
-//   dashboard -> Farm (dashboard.jsx)      <Sidebar active="dashboard" />  (key kept so dashboard.jsx and its onHome keep working)
-// change the hrefs to match our routes. with react-router, swap the <a href> for <NavLink to=...>.
 const NAV_LINKS = [
   { key: "home", label: "Dashboard", href: "/home", img: sidebarHome },
   { key: "dashboard", label: "Farm", href: "/dashboard", img: sidebarDashboard },
@@ -46,7 +38,7 @@ const MARK = { width: "var(--fm-mark-size, 20px)", height: "var(--fm-mark-size, 
 const NAV_KEY = "farme.nav.collapsed";
 const CHAT_KEY = "farme.chat.v1";
 const BUBBLE = 56; 
-const isWide = () => window.matchMedia("(min-width: 768px)").matches; // tablet and up
+const isWide = () => window.matchMedia("(min-width: 768px)").matches; 
 
 export function Img({ src, alt, w, h, ratio, className, label = "img" }) {
   const [failed, setFailed] = useState(false);
@@ -85,9 +77,9 @@ const unlockScroll = () => {
   openModals = Math.max(0, openModals - 1);
   if (openModals === 0) document.body.style.overflow = bodyOverflow;
 };
-  // props: title, onClose, wide = a wider dialog (for content like the crop suggestions)
-export function Modal({ title, onClose, wide, children }) {
-  // onClose changes on every render, so i keep the latest one in a ref and set the listeners up only once
+
+export function Modal({ title, onClose, wide, top, children }) {
+  
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
@@ -100,9 +92,9 @@ export function Modal({ title, onClose, wide, children }) {
     };
   }, []);
   return (
-    // clicking the dark area outside the dialog closes it too
+    
     <div
-      className="fm-modal-backdrop"
+      className={`fm-modal-backdrop${top ? " fm-modal-backdrop--top" : ""}`}
       role="presentation"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -129,18 +121,18 @@ export function Modal({ title, onClose, wide, children }) {
   );
 }
 
-// "are you sure?" dialog, used instead of the browser's own confirm box.
-// props: danger = red confirm button, onConfirm = what happens on yes, onClose = cancel
+
 export function ConfirmModal({
   title,
   message,
   confirmLabel = "Confirm",
   danger,
+  top,
   onConfirm,
   onClose,
 }) {
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} top={top}>
       <p className="mb-4">{message}</p>
       <div className="fm-modal__actions">
         <button type="button" className="fm-btn fm-btn--light" onClick={onClose}>
@@ -159,20 +151,15 @@ export function ConfirmModal({
   );
 }
 
-// ---------- dropdown ----------
-// the browser's own <select> list can't be styled, so i built this one by hand (look: .fm-dropdown-* in shared.css).
-// props: id (put the <label htmlFor> on it), value, onChange(value), options = ["Clay", ...] or [{ value, label }],
-//        placeholder, describedBy = id of an error / hint element
-// the list opens below the button and pushes the content down, so a dialog never cuts it off.
-// keyboard: arrows move, enter / space picks, escape closes, home / end jump.
+
 export function Select({ id, value, onChange, options, placeholder = "Select…", describedBy }) {
   const items = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
   const [open, setOpen] = useState(false);
-  const [hi, setHi] = useState(0); // the highlighted option
+  const [hi, setHi] = useState(0); 
   const box = useRef(null);
   const current = items.find((i) => i.value === value);
 
-  // close when clicking or tapping outside
+ 
   useEffect(() => {
     if (!open) return;
     const away = (e) => box.current && !box.current.contains(e.target) && setOpen(false);
@@ -203,7 +190,7 @@ export function Select({ id, value, onChange, options, placeholder = "Select…"
     }
     if (e.key === "Escape") {
       e.preventDefault();
-      e.stopPropagation(); // closes just the list, not the dialog around it
+      e.stopPropagation(); 
       setOpen(false);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -267,9 +254,7 @@ export function Select({ id, value, onChange, options, placeholder = "Select…"
   );
 }
 
-// ---------- date picker ----------
-// the browser's own <input type="date"> popup can't be styled, so i built this one by hand (look: .fm-cal-* in shared.css).
-// props: id (put the <label htmlFor> on it), value = "YYYY-MM-DD", onChange("YYYY-MM-DD"), min / max (optional, same format)
+
 const MONTHS = [
   "January",
   "February",
@@ -303,7 +288,7 @@ export function DatePicker({ id, value, onChange, min, max }) {
   });
   const box = useRef(null);
 
-  // close when clicking or tapping outside, or on escape
+  
   useEffect(() => {
     if (!open) return;
     const away = (e) => box.current && !box.current.contains(e.target) && setOpen(false);
@@ -331,7 +316,7 @@ export function DatePicker({ id, value, onChange, min, max }) {
     setOpen(false);
   };
 
-  // always 6 weeks, so the popup stays the same height from month to month
+  
   const first = new Date(view.y, view.m, 1);
   const cells = Array.from(
     { length: 42 },
@@ -434,14 +419,24 @@ const markImg = (key, state) =>
   PAGE_MARKS[`../assets/sidebar-${key}-${state}.png`] ||
   SHARED_MARKS[`../assets/sidebar-${state}.png`];
 
-// initials for the avatar, like "FL"
+
 const initials = (u) =>
   `${(u?.firstName || "")[0] || ""}${(u?.lastName || "")[0] || ""}`.toUpperCase() || "?";
 
-// todo(backend): `user` comes from getUser() (GET /me). avatar = { style, seed, background } from the register page, drawn in the browser. avatarUrl = a full image URL for the profile photo. Leave both out and the card shows initials.
+
+const USER_KEY = "fm-user";
+const readCachedUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY));
+  } catch {
+    return null;
+  }
+};
+
+
 export function Sidebar({ active = "home", user, onHome }) {
   const [collapsed, setCollapsed] = useState(() => {
-    if (!isWide()) return true; // phones always start closed
+    if (!isWide()) return true; 
     try {
       return localStorage.getItem(NAV_KEY) === "1";
     } catch {
@@ -453,11 +448,11 @@ export function Sidebar({ active = "home", user, onHome }) {
     try {
       localStorage.setItem(NAV_KEY, collapsed ? "1" : "0");
     } catch {
-      /* storage blocked */
+      
     }
   }, [collapsed]);
 
-  // helper: warns on screen if shared.css is old or missing. safe to delete once everything works.
+  
   const [cssOld, setCssOld] = useState(false);
   useEffect(() => {
     setCssOld(
@@ -467,10 +462,22 @@ export function Sidebar({ active = "home", user, onHome }) {
   }, []);
 
   const [askLogout, setAskLogout] = useState(false);
-  const [avatarFailed, setAvatarFailed] = useState(false); // true when avatarUrl can't be loaded, so we show initials instead
-  useEffect(() => setAvatarFailed(false), [user?.avatarUrl]);
-  const avatarUri = useAvatarUri(user?.avatar);
-  const name = user ? `${user.firstName} ${user.lastName}`.trim() : "";
+  const [avatarFailed, setAvatarFailed] = useState(false); 
+  const [cachedUser] = useState(readCachedUser);
+  const hasUser = !!(user && (user.firstName || user.lastName || user.username));
+  const shownUser = hasUser ? user : cachedUser;
+  useEffect(() => {
+    if (!hasUser) return;
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } catch {
+    
+    }
+  }, [user, hasUser]);
+
+  useEffect(() => setAvatarFailed(false), [shownUser?.avatarUrl]);
+  const avatarUri = useAvatarUri(shownUser?.avatar);
+  const name = shownUser ? `${shownUser.firstName} ${shownUser.lastName}`.trim() : "";
 
   return (
     <>
@@ -497,11 +504,11 @@ export function Sidebar({ active = "home", user, onHome }) {
         </div>
 
         <div className="fm-nav__body">
-          {/* page links */}
+          {}
           <div className="fm-nav__links">
             {NAV_LINKS.map((l) => {
               const hoverImg = markImg(l.key, "hover");
-              const activeImg = markImg(l.key, "active") || hoverImg; // no active image? reuse the hover one
+              const activeImg = markImg(l.key, "active") || hoverImg; 
               return (
                 <a
                   key={l.key}
@@ -528,7 +535,7 @@ export function Sidebar({ active = "home", user, onHome }) {
                     <Img src={l.img} alt="" w={28} h={28} label="icon" />
                   </span>
                   <span className="fm-nav__label">{l.label}</span>
-                  {/* the image on the right side: shows on hover, and stays on the current page */}
+                  {}
                   <span className="fm-nav__mark" style={MARK} aria-hidden="true">
                     {hoverImg && (
                       <img
@@ -554,25 +561,23 @@ export function Sidebar({ active = "home", user, onHome }) {
             })}
           </div>
 
-          {/* bottom: user card (initials + name + role, from the backend) and log out */}
+          {}
           <div className="fm-nav__footer">
-            {name && (
-              <div className="fm-user" title={name}>
-                <span className="fm-user__avatar" aria-hidden="true">
-                  {avatarUri ? (
-                    <img src={avatarUri} alt="" draggable={false} />
-                  ) : user.avatarUrl && !avatarFailed ? (
-                    <img src={user.avatarUrl} alt="" draggable={false} onError={() => setAvatarFailed(true)} />
-                  ) : (
-                    initials(user)
-                  )}
-                </span>
-                <span className="fm-user__text">
-                  <span className="fm-user__name">{name}</span>
-                  <span className="fm-user__role">{user.role || "Farmer"}</span>
-                </span>
-              </div>
-            )}
+            <div className="fm-user" title={name}>
+              <span className="fm-user__avatar" aria-hidden="true">
+                {!shownUser ? null : avatarUri ? (
+                  <img src={avatarUri} alt="" draggable={false} />
+                ) : shownUser.avatarUrl && !avatarFailed ? (
+                  <img src={shownUser.avatarUrl} alt="" draggable={false} onError={() => setAvatarFailed(true)} />
+                ) : (
+                  initials(shownUser)
+                )}
+              </span>
+              <span className="fm-user__text">
+                <span className="fm-user__name">{name || "\u00A0"}</span>
+                <span className="fm-user__role">{shownUser ? shownUser.role || "Farmer" : "\u00A0"}</span>
+              </span>
+            </div>
             <button
               type="button"
               onClick={() => setAskLogout(true)}
@@ -609,13 +614,22 @@ export function Sidebar({ active = "home", user, onHome }) {
           save, and refresh. (This message goes away on its own.)
         </p>
       )}
-      {/* todo(backend): logout() should end the session on the server (POST /logout), then go to the login page */}
+      {}
       {askLogout && (
         <ConfirmModal
           title="Log out?"
           message="You'll need to log in again to see your farm."
           confirmLabel="Log out"
-          onConfirm={() => logout()}
+          onConfirm={() => {
+            
+            try {
+              localStorage.removeItem(USER_KEY);
+            } catch {
+              
+            }
+            clearAvatarCache();
+            logout();
+          }}
           onClose={() => setAskLogout(false)}
         />
       )}
@@ -623,7 +637,7 @@ export function Sidebar({ active = "home", user, onHome }) {
   );
 }
 
-// keeps the bubble fully inside the window
+
 const clampPos = (p) => ({
   right: Math.min(Math.max(8, p.right), window.innerWidth - BUBBLE - 8),
   bottom: Math.min(Math.max(8, p.bottom), window.innerHeight - BUBBLE - 8),
@@ -632,12 +646,10 @@ const clampPos = (p) => ({
 const SUGGESTIONS = [
   "What should I plant now?",
   "How often should I water?",
-  "Will the weather affect my crops?",
+  "What's the 3-day forecast?",
 ];
 
-export function ChatHead({ context }) {
-  // restore what i saved on the last page
-  // todo(backend): the chat history (last 50 messages) only lives in this browser's localStorage. save it per user on the server if it should follow them across devices.
+export function ChatHead({ context, suggestions, hint }) {
   const [saved] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(CHAT_KEY) || "{}");
@@ -646,26 +658,35 @@ export function ChatHead({ context }) {
     }
   });
   const [open, setOpen] = useState(!!saved.open);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false); 
   const [messages, setMessages] = useState(saved.messages || []);
+  const [conversationId, setConversationId] = useState(
+  saved.conversationId || null
+  );
   const [askClear, setAskClear] = useState(false);
-  const [pos, setPos] = useState(saved.pos || { right: 16, bottom: 16 }); // distance from the window's right / bottom edge
+  const [pos, setPos] = useState(saved.pos || { right: 16, bottom: 16 }); 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const drag = useRef(null); // info about the drag in progress
+  const drag = useRef(null); 
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
-  // save the chat whenever it changes
   useEffect(() => {
     try {
-      localStorage.setItem(CHAT_KEY, JSON.stringify({ open, pos, messages: messages.slice(-50) }));
+        localStorage.setItem(
+        CHAT_KEY,
+        JSON.stringify({
+          open,
+          pos,
+          messages: messages.slice(-50),
+          conversationId,
+        })
+      );
     } catch {
-      /* storage blocked */
+      
     }
-  }, [open, pos, messages]);
+  }, [open, pos, messages, conversationId]);
 
-  // keep the bubble inside the window when it gets resized or rotated
   useEffect(() => {
     const fit = () => setPos((p) => clampPos(p));
     fit();
@@ -673,7 +694,6 @@ export function ChatHead({ context }) {
     return () => window.removeEventListener("resize", fit);
   }, []);
 
-  // escape closes the chat, and the newest message stays in view
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => e.key === "Escape" && setOpen(false);
@@ -700,17 +720,15 @@ export function ChatHead({ context }) {
     const d = drag.current;
     if (!d || !d.down) return;
     if (e.pointerType === "mouse" && e.buttons === 0) {
-      d.down = false; // the mouse button was released somewhere we didn't hear about: stop dragging
+      d.down = false; 
       return;
     }
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
-    if (!d.moved && Math.hypot(dx, dy) < 6) return; // small wiggles still count as a tap
+    if (!d.moved && Math.hypot(dx, dy) < 6) return; 
     d.moved = true;
     setPos(clampPos({ right: d.right - dx, bottom: d.bottom - dy }));
   };
-  // pointer up, cancelled (the browser took over, like a native image drag) or capture lost: the drag is over.
-  // without this the bubble kept following the mouse on hover.
   const onPointerUp = () => {
     if (drag.current) drag.current.down = false;
   };
@@ -720,29 +738,57 @@ export function ChatHead({ context }) {
     if (!wasDrag) setOpen((o) => !o);
   };
 
-  // send a message, then add the bot's reply
-  // todo(backend): sendChat posts the last 20 messages + `context` to CHAT_ENDPOINT (POST /chat) and expects { reply }. see farmeApi.js.
+  
   const send = async (raw) => {
     const content = raw.trim();
+
     if (!content || busy) return;
-    const next = [...messages, { id: crypto.randomUUID(), role: "user", text: content }];
+
+    const next = [
+      ...messages,
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        text: content,
+      },
+    ];
+
     setMessages(next);
     setText("");
     setBusy(true);
-    let reply;
+
     try {
-      reply = await sendChat({
-        messages: next.slice(-20).map((m) => ({ role: m.role, content: m.text })),
+      const result = await sendChat({
+        message: content,
+        conversationId,
         context,
       });
-    } catch {
-      reply = "Sorry, I couldn't reach the server. Please try again in a bit.";
+
+      setConversationId(result.conversationId);
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: result.response,
+        },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: error.message || "Sorry, I couldn't reach the server. Please try again in a bit.",
+        },
+      ]);
+    } finally {
+      setBusy(false);
     }
-    setMessages((m) => [...m, { id: crypto.randomUUID(), role: "assistant", text: reply }]);
-    setBusy(false);
   };
 
-  // desktop window: opens above the bubble, or below it when the bubble is in the top half of the screen
+
   const upper = pos.bottom > window.innerHeight / 2;
   const panelStyle = expanded
     ? {
@@ -770,12 +816,7 @@ export function ChatHead({ context }) {
   return (
     <>
       {open && (
-        <section
-          className="fm-chat-panel"
-          role="dialog"
-          aria-label="FarMe chat"
-          style={panelStyle}
-        >
+        <section className="fm-chat-panel" role="dialog" aria-label="FarMe chat" style={panelStyle}>
           <header className="fm-chat-head">
             <strong className="font-display text-lg">Sprout</strong>
             <span className="flex gap-2">
@@ -814,8 +855,9 @@ export function ChatHead({ context }) {
                 <p className="fm-msg fm-msg--bot">
                   Hi! Ask me anything about your plants, soil or the weather.
                 </p>
+                {hint && <p className="fm-msg fm-msg--bot">{hint}</p>}
                 <div className="fm-chat-chips">
-                  {SUGGESTIONS.map((s) => (
+                  {(suggestions?.length ? suggestions : SUGGESTIONS).map((s) => (
                     <button key={s} type="button" className="fm-chip" onClick={() => send(s)}>
                       {s}
                     </button>
@@ -824,22 +866,13 @@ export function ChatHead({ context }) {
               </>
             )}
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}
-              >
+              <div key={m.id} className={`fm-msg fm-msg--${m.role === "user" ? "user" : "bot"}`}>
                 {m.role === "assistant" ? (
                   <ReactMarkdown
                     components={{
-                      ul: ({ children }) => (
-                        <ul className="fm-chat-list">{children}</ul>
-                      ),
-                      ol: ({ children }) => (
-                        <ol className="fm-chat-list fm-chat-list--ordered">{children}</ol>
-                      ),
-                      li: ({ children }) => (
-                        <li>{children}</li>
-                      ),
+                      ul: ({ children }) => <ul className="fm-chat-list">{children}</ul>,
+                      ol: ({ children }) => <ol className="fm-chat-list fm-chat-list--ordered">{children}</ol>,
+                      li: ({ children }) => <li>{children}</li>,
                     }}
                   >
                     {m.text}
@@ -885,15 +918,17 @@ export function ChatHead({ context }) {
           message="All the messages in this conversation will be deleted. This can't be undone."
           confirmLabel="Clear chat"
           danger
+          top
           onConfirm={() => {
             setMessages([]);
+            setConversationId(null);
             setAskClear(false);
           }}
           onClose={() => setAskClear(false)}
         />
       )}
 
-      {/* the bubble: just the chatbot image. drag it with the pointer */}
+      {}
       <button
         type="button"
         className="fm-chat-bubble"
@@ -911,5 +946,27 @@ export function ChatHead({ context }) {
         <Img src={chatbot} alt="" w={56} h={56} label="chat" />
       </button>
     </>
+  );
+}
+
+export function SproutLoader({ label = "Loading", size = "md" }) {
+  const cls = size === "sm" ? " fm-sprout--sm" : size === "fill" ? " fm-sprout--fill" : "";
+  return (
+    <div className={`fm-sprout${cls}`} role="status" aria-live="polite">
+      <svg className="fm-sprout__svg" viewBox="0 0 64 64" aria-hidden="true">
+        <path className="fm-sprout__stem" pathLength="1" d="M32 52 V30" />
+        <path className="fm-sprout__leaf fm-sprout__leaf--l" d="M32 34 C20 34 13 26 13 17 C24 17 32 24 32 34 Z" />
+        <path className="fm-sprout__leaf fm-sprout__leaf--r" d="M32 34 C44 34 51 26 51 17 C40 17 32 24 32 34 Z" />
+        <path className="fm-sprout__soil" d="M8 60 C12 48 52 48 56 60 Z" />
+      </svg>
+      <span className="fm-sprout__label">
+        {label}
+        <span className="fm-sprout__dots" aria-hidden="true">
+          <i>.</i>
+          <i>.</i>
+          <i>.</i>
+        </span>
+      </span>
+    </div>
   );
 }

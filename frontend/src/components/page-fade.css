@@ -1,14 +1,8 @@
-/* ==========================================================================
-   page-fade.css: the fade between the register, login, forgot and reset pages (components/page-fade.jsx).
-   it moves what is inside the page (the card), not the green background, so the background never flashes.
-   the dialog (.fm-modal-backdrop) is left out so it doesn't float up when it opens.
-   ========================================================================== */
-
 .fm-page > :not(.fm-modal-backdrop) {
   animation: fm-page-in 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .fm-page.is-leaving > :not(.fm-modal-backdrop) {
-  animation: fm-page-out 0.22s ease-in both; /* keep the same as LEAVE_MS in page-fade.jsx */
+  animation: fm-page-out 0.22s ease-in both; 
   pointer-events: none;
 }
 @keyframes fm-page-in {

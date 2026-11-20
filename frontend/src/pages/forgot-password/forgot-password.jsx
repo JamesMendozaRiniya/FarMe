@@ -1,18 +1,13 @@
-// the forgot password page: the person types their email and we send a link to choose a new password.
-// the link opens the reset page (/reset-password?token=...). same look as the login page (it uses login.css).
-// the picture on the side is a gif (assets/sprout/awkward.gif) that just keeps playing. no sprout here, so nothing reacts.
-//
-//   route:  in App.jsx: if (path.startsWith("/forgot-password")) return <ForgotPassword />;
 import { useRef, useState } from "react";
 import "../login/login.css";
 import logo from "../../assets/sidebar-logo.png";
 import awkward from "../../assets/sprout/awkward.gif";
-import { forgotPassword } from "../../services/farmeApi"; // the call to the server (todo(backend) notes are there)
-import PageFade from "../../components/page-fade"; // fades between the register / login / forgot / reset pages
+import { forgotPassword } from "../../services/farmeApi"; 
+import PageFade from "../../components/page-fade"; 
 
 const LOGIN_HREF = "/login";
 
-// the server must check again: this only helps people early
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const checkEmail = (v) => {
   const t = v.trim();
@@ -25,7 +20,7 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | saving | done
+  const [status, setStatus] = useState("idle"); 
   const inputRef = useRef(null);
 
   const error = submitted ? checkEmail(email) : "";
@@ -42,7 +37,7 @@ export default function ForgotPassword() {
     setStatus("saving");
     try {
       await forgotPassword({ email: email.trim().toLowerCase() });
-      setStatus("done"); // the same message shows whether or not the email has an account (see farmeApi.js)
+      setStatus("done"); 
     } catch (err) {
       setStatus("idle");
       setFormError(err?.message || "We couldn't send the link. Check your connection and try again.");
@@ -52,7 +47,7 @@ export default function ForgotPassword() {
   return (
     <PageFade className="fm-login">
       <div className="fm-card fm-login__card">
-        {/* the picture side: a gif that keeps playing (the image is decoration, so it has an empty alt) */}
+        {}
         <section className="fm-login__mascot">
           <img src={awkward} alt="" className="fm-login__gif" draggable={false} />
         </section>

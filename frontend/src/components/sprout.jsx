@@ -1,6 +1,3 @@
-
-// hover the sprout itself and it gets happy, and after a while with no movement it falls asleep.
-// the frames are in assets/sprout. the sprout is decoration, so the image has an empty alt.
 import { useEffect, useRef, useState } from "react";
 import "./sprout.css";
 import look0 from "../assets/sprout/look-0.png";
@@ -18,7 +15,7 @@ import coverFull from "../assets/sprout/cover-full.png";
 import shocked from "../assets/sprout/shocked.png";
 
 const ALL = [look0, look45, look90, look180, look330, down0, down45, down90, happy, typing, coverPeek, coverFull, shocked];
-const IDLE_MS = 12000; // no pointer movement for this long: the sprout falls asleep
+const IDLE_MS = 12000; 
 
 const MOODS = {
   shocked: { src: shocked },
@@ -29,30 +26,30 @@ const MOODS = {
 };
 
 const AROUND = {
-  0: { src: look330 }, // right
-  1: { src: down45, flip: true }, // down right
-  2: { src: down0 }, // down
-  3: { src: down45 }, // down left
-  4: { src: look90 }, // left
+  0: { src: look330 }, 
+  1: { src: down45, flip: true }, 
+  2: { src: down0 }, 
+  3: { src: down45 }, 
+  4: { src: look90 }, 
   "-4": { src: look90 },
-  "-3": { src: look45 }, // up left
-  "-2": { src: look0 }, // up
-  "-1": { src: look180 }, // up right
+  "-3": { src: look45 }, 
+  "-2": { src: look0 }, 
+  "-1": { src: look180 }, 
 };
 const FRONT = { src: look0 };
 
 function pick(dx, dy) {
-  if (Math.hypot(dx, dy) < 70) return FRONT; // pointer is right on it
+  if (Math.hypot(dx, dy) < 70) return FRONT; 
   return AROUND[Math.round(Math.atan2(dy, dx) / (Math.PI / 4))] || FRONT;
 }
 
 export default function Sprout({ mood = "auto" }) {
   const box = useRef(null);
-  const [look, setLook] = useState(MOODS.happy); // resting pose: happy
+  const [look, setLook] = useState(MOODS.happy); 
   const [hovered, setHovered] = useState(false);
   const [asleep, setAsleep] = useState(false);
 
-  // download every frame once so nothing flickers when the picture changes
+  
   useEffect(() => {
     ALL.forEach((src) => {
       const img = new Image();
@@ -60,9 +57,6 @@ export default function Sprout({ mood = "auto" }) {
     });
   }, []);
 
-  // follow the pointer, but only while it is over the sprout's own side (the parent of this component).
-  // leave that side and the sprout goes back to the happy pose. fingers don't count: a phone has no pointer.
-  // the sleep timer listens to the whole window, so the sprout still dozes off if nothing moves anywhere.
   useEffect(() => {
     const area = box.current?.parentElement;
     let frame = 0;

@@ -1,23 +1,17 @@
-// the reset password page: opened from the link in the email (/reset-password?token=...).
-// the person chooses a new password, then goes to the login page. same look as the login page (it uses login.css).
-// the sprout covers its eyes while you type a password (and peeks if you show it).
-// pressing "Change password" first asks "are you sure?" (ConfirmModal), and only then saves.
-//
-//   route:  in App.jsx: if (path.startsWith("/reset-password")) return <ResetPassword />;
 import { useRef, useState } from "react";
 import { Check, Circle } from "lucide-react";
 import "../login/login.css";
 import logo from "../../assets/sidebar-logo.png";
 import Sprout from "../../components/sprout";
-import { ConfirmModal } from "../../components/shared"; // the "are you sure?" dialog used on the other pages
-import { resetPassword } from "../../services/farmeApi"; // the call to the server (todo(backend) notes are there)
-import PageFade from "../../components/page-fade"; // fades between the register / login / forgot / reset pages
+import { ConfirmModal } from "../../components/shared";
+import { resetPassword } from "../../services/farmeApi"; 
+import PageFade from "../../components/page-fade"; 
 
 const LOGIN_HREF = "/login";
 const FORGOT_HREF = "/forgot-password";
-const SHOCK_MS = 2600; // how long the sprout stays shocked
+const SHOCK_MS = 2600; 
 
-// same rules as the register page (the server must check again: these only help people early)
+
 const PASSWORD_RULES = [
   { key: "len", label: "8 or more characters", test: (p) => p.length >= 8 },
   { key: "letter", label: "A letter", test: (p) => /\p{L}/u.test(p) },
@@ -39,18 +33,18 @@ const CHECKS = {
 const FIELDS = Object.keys(CHECKS);
 
 export default function ResetPassword() {
-  // the token comes from the link in the email. the page never shows it or keeps it anywhere else.
+
   const token = new URLSearchParams(window.location.search).get("token") || "";
 
   const [values, setValues] = useState({ password: "", confirm: "" });
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | saving | done
+  const [status, setStatus] = useState("idle"); 
   const [showPw, setShowPw] = useState(false);
-  const [confirming, setConfirming] = useState(false); // the "are you sure?" dialog is open
-  const [focused, setFocused] = useState(null); // "pw" | "btn" | null
-  const [hovered, setHovered] = useState(null); // same, for the mouse
-  const [shock, setShock] = useState(0); // counts up on every mistake so the shake can run again
+  const [confirming, setConfirming] = useState(false); 
+  const [focused, setFocused] = useState(null); 
+  const [hovered, setHovered] = useState(null); 
+  const [shock, setShock] = useState(0); 
   const formRef = useRef(null);
   const shockTimer = useRef(0);
 
@@ -68,7 +62,7 @@ export default function ResetPassword() {
     shockTimer.current = window.setTimeout(() => setShock(0), SHOCK_MS);
   };
 
-  // step 1: check the fields. if they are fine, ask "are you sure?" before saving anything
+
   const submit = (e) => {
     e.preventDefault();
     if (status === "saving") return;
@@ -83,12 +77,12 @@ export default function ResetPassword() {
     setConfirming(true);
   };
 
-  // step 2: the person said yes in the dialog
+
   const save = async () => {
     setConfirming(false);
     setStatus("saving");
     try {
-      await resetPassword({ token, password: values.password }); // never trimmed: spaces can be part of a password
+      await resetPassword({ token, password: values.password }); 
       setStatus("done");
     } catch (err) {
       setStatus("idle");
@@ -97,7 +91,7 @@ export default function ResetPassword() {
     }
   };
 
-  // what the sprout does. the first one that fits wins.
+
   const mood =
     status === "done"
       ? "happy"
@@ -113,7 +107,7 @@ export default function ResetPassword() {
               ? "happy"
               : "auto";
 
-  // hover for the mouse only (a tap on a phone would leave the sprout stuck). focus works for everyone.
+ 
   const spot = (k) => ({
     onPointerEnter: (e) => e.pointerType === "mouse" && setHovered(k),
     onPointerLeave: () => setHovered((h) => (h === k ? null : h)),
@@ -140,7 +134,7 @@ export default function ResetPassword() {
       </div>
     );
   } else if (!token) {
-    // somebody opened /reset-password without the link from the email
+    
     body = (
       <div className="fm-login__done" role="alert">
         <h1 className="font-display text-3xl font-bold leading-tight">This link isn't complete</h1>
@@ -158,7 +152,7 @@ export default function ResetPassword() {
           <p className="mt-1">Pick one you don't use anywhere else.</p>
         </div>
 
-        {/* both password fields count as "the password" for the sprout */}
+        {}
         <div {...spot("pw")} className="flex flex-col gap-4">
           <div>
             <label htmlFor="reset-password" className="block font-bold mb-1">
@@ -241,7 +235,7 @@ export default function ResetPassword() {
   return (
     <PageFade className="fm-login">
       <div className="fm-card fm-login__card">
-        {/* the sprout side: the sprout follows the pointer while it is anywhere on this side */}
+        {}
         <section className="fm-login__mascot" aria-label="Your FarMe sprout">
           <Sprout mood={mood} />
         </section>

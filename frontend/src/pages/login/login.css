@@ -1,14 +1,3 @@
-/* ==========================================================================
-   login.css: the login page (the forgot password and reset password pages use it too).
-   uses the colors and the .fm-card / .fm-input / .fm-btn pieces from shared.css.
-   every class here starts with fm-login, so nothing can clash with the other pages' css (it is all global).
-
-     .fm-login          the page: green cloth background, same weave as the register page
-     .fm-login__card    one card, split in two
-     .fm-login__mascot  the sprout side (the sprout itself is components/sprout)
-     .fm-login__formside the form side (the heading row holds the logo, in the top-right corner)
-   ========================================================================== */
-
 .fm-login {
   display: grid;
   place-items: center;
@@ -27,7 +16,7 @@
   overflow: hidden;
 }
 
-/* ---------- the sprout side ---------- */
+
 .fm-login__mascot {
   position: relative;
   display: flex;
@@ -39,7 +28,7 @@
   background: linear-gradient(160deg, rgba(222, 197, 158, 0.5), rgba(222, 197, 158, 0.12) 80%);
   border-bottom: 3px solid var(--pine);
 }
-/* the stitched edge, like the farmer card on the register page */
+
 .fm-login__mascot::after {
   content: "";
   position: absolute;
@@ -54,7 +43,7 @@
   justify-content: space-between;
   gap: 0.75rem 1rem;
 }
-/* the logo sits in the top-right corner of the form side */
+
 .fm-login__logo {
   display: block;
   flex-shrink: 0;
@@ -68,7 +57,7 @@
     right: 1rem;
   }
 }
-/* very narrow phones: the logo goes on top of the heading */
+
 @media (max-width: 479px) {
   .fm-login__head {
     flex-direction: column;
@@ -79,7 +68,7 @@
   }
 }
 
-/* ---------- the form side ---------- */
+
 .fm-login__formside {
   position: relative;
   display: flex;
@@ -96,7 +85,7 @@
   gap: 0.25rem 1rem;
 }
 .fm-login__cta {
-  text-decoration: none; /* it is also used on links (the forgot / reset pages) */
+  text-decoration: none; 
   display: flex;
   align-items: center;
   justify-content: center;
@@ -121,8 +110,7 @@
   }
 }
 
-/* ---------- small pieces ---------- */
-/* a field with a mistake */
+
 .fm-login-bad {
   border-color: var(--danger);
 }
@@ -156,7 +144,7 @@
   height: 1.3rem;
   accent-color: var(--kombu);
 }
-/* the password field with the eye inside it */
+
 .fm-login-pw {
   position: relative;
 }
@@ -181,13 +169,12 @@
   }
 }
 
-/* the sprout stands on a little patch of grass (the shadow from sprout.css is not needed here) */
 .fm-login__mascot .fm-sprout::before {
   content: "";
   position: absolute;
   left: -16%;
   right: -16%;
-  bottom: -2%;
+  bottom: var(--patch-lift, 7%); 
   height: 21%;
   background:
     radial-gradient(ellipse at 50% 20%, #c2cf9f 0 35%, transparent 36%),
@@ -199,22 +186,20 @@
   display: none;
 }
 
-/* ---------- used by the forgot password and reset password pages too (they import this file) ---------- */
-/* forgot / reset pages: the logo is the first thing in the form side. it floats in the corner like on the login page,
-   and on a very narrow phone it sits above the heading instead */
+
 @media (max-width: 479px) {
   .fm-login__formside > .fm-login__logo {
     align-self: flex-start;
     margin-bottom: 0.75rem;
   }
 }
-/* the message that replaces the form: "check your email", "password changed" */
+
 .fm-login__done {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
-/* the password rules under the new password field */
+
 .fm-login-rules {
   display: flex;
   flex-wrap: wrap;
@@ -239,7 +224,7 @@
   color: var(--dingley);
 }
 
-/* the gif on the forgot password page. no `animation` or pause rules here: it just keeps playing. */
+
 .fm-login__gif {
   display: block;
   width: 8rem;
