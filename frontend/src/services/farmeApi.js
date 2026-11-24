@@ -85,6 +85,13 @@ export async function updatePlantAPI(plantId, updates) {
   });
 }
 
+export async function movePlantsAPI(slotId, moves) {
+  return apiRequest(`/slots/${slotId}/plants/move`, {
+    method: "POST",
+    body: JSON.stringify({ moves }),
+  });
+}
+
 export async function deletePlantAPI(plantId) {
   return apiRequest(`/plants/${plantId}`, {
     method: "DELETE",
@@ -131,10 +138,10 @@ export async function deleteNoteAPI(noteId) {
   });
 }
 
-export async function logWatering(slotId, at) {
+export async function logWatering(slotId, at, plantIds) {
   return apiRequest(`/slots/${slotId}/waterings`, {
     method: "POST",
-    body: JSON.stringify({ at }),
+    body: JSON.stringify(plantIds ? { at, plantIds } : { at }),
   });
 }
 

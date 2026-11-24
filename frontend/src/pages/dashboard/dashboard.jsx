@@ -25,6 +25,7 @@ import {
   updateSlotAPI,
   createPlantAPI,
   updatePlantAPI,
+  movePlantsAPI,
   deletePlantAPI,
   createHarvestAPI,
   updateHarvestAPI,
@@ -50,6 +51,18 @@ import {
 } from "../../components/shared";
 import { SOILS, CROPS, cropByKey } from "../../data/crops";
 import { buildChatContext } from "../../utils/chatContext";
+import { sfx } from "../../utils/sfx";
+import {
+  plantWateredToday,
+  slotWateredToday,
+  wateringCounts,
+  plantNeedsWater,
+  slotNeedsWater,
+  daysUntilWatering,
+  daysOverdue,
+  plantOverdue,
+  wateringInterval,
+} from "../../utils/watering";
 
 import dashboardNotif from "../../assets/dashboard-notif.png";
 import dashboardEmpty from "../../assets/dashboard-empty-state.png";
@@ -94,7 +107,7 @@ const withSuffix = (base, n) => {
 const CELL = 30; 
 const TROWEL_SIZE = 44; 
 const TROWEL_TIP = { x: 4, y: 4 }; 
-const MAX_PREVIEW = 365; 
+const MAX_PREVIEW = 1460; 
 
 const PINE = "#202808";
 const KOMBU = "#33432B";
@@ -213,7 +226,7 @@ const WATER_COPY = {
     tip: "Wet leaves overnight invite fungus. If the soil is very dry, water just the base. Otherwise do it first thing tomorrow.",
   },
 };
-const wateredToday = (slot, now) => !!slot.lastWatered && dayOf(slot.lastWatered) === dayOf(now);
+const wateredToday = (slot, now) => slotWateredToday(slot, now);
 
 
 function buildWaterNotifs(slots, now) {
@@ -221,7 +234,7 @@ function buildWaterNotifs(slots, now) {
   if (!phase) return [];
   const c = WATER_COPY[phase];
   return slots
-    .filter((s) => s.plants.length > 0 && !wateredToday(s, now))
+    .filter((s) => s.plants.length > 0 && slotNeedsWater(s, now))
     .map((s) => ({
       id: `water-${s.id}-${dayOf(now)}-${phase}`,
       kind: "water",
@@ -1354,6 +1367,7 @@ function PlotGrid({
   grid,
   plantMap,
   asOf,
+  now,
   selected,
   onSelect,
   onActivate,
@@ -1460,6 +1474,23 @@ function PlotGrid({
             >
               {crop.emoji}
             </text>
+          )}
+          {plant && plantNeedsWater(plant, now) && (
+            <g pointerEvents="none">
+              <title>{plantOverdue(plant, now) ? `Overdue by ${daysOverdue(plant, now)} day${daysOverdue(plant, now) === 1 ? "" : "s"}` : "Water today"}</title>
+              <circle
+                cx={col * CELL + 10}
+                cy={row * CELL + CELL - 10}
+                r={8}
+                fill={plantOverdue(plant, now) ? "#C0392B" : "#4A90C2"}
+                stroke={PINE}
+                strokeWidth={1.5}
+              />
+              <path
+                d={`M${col * CELL + 10} ${row * CELL + CELL - 15} q3.6 4 3.6 6 a3.6 3.6 0 0 1 -7.2 0 q0 -2 3.6 -6 z`}
+                fill="#FBF6EA"
+              />
+            </g>
           )}
           {isPicked && (
             <>
@@ -1731,10 +1762,12 @@ export default function FarMeDashboard() {
   const [preview, setPreview] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [notice, setNotice] = useState(null); 
-  const plantingRef = useRef(false); 
+  const plantingCellsRef = useRef(new Set()); 
+  const wateringRef = useRef(false);
 
 
   const showError = (error, fallback, title = "Something went wrong") => {
+    sfx.error();
     const msg = error?.message || fallback;
     if (/already occupied/i.test(msg)) {
       getSlots().then(setSlots).catch(() => {});
@@ -1972,34 +2005,64 @@ export default function FarMeDashboard() {
         lines: ["Something is already planted there.", "Pick another square, or use the trowel to move it."],
       });
     }
-    if (plantingRef.current) return;
-    plantingRef.current = true;
+    const cellKey = `${slot.id}-${cell.row}-${cell.col}`;
+    if (plantingCellsRef.current.has(cellKey)) return;
+    plantingCellsRef.current.add(cellKey);
+
+    const targetSlotId = slot.id;
+    const cropKey = brush;
+    const plantingDate = plantedOn;
+
+    const temporaryId = `pending-${targetSlotId}-${cell.row}-${cell.col}-${Date.now()}`;
+    const temporaryPlant = {
+      id: temporaryId,
+      row: cell.row,
+      col: cell.col,
+      cropKey,
+      plantedOn: plantingDate,
+      pendingSave: true,
+    };
+
+    updateSlot(targetSlotId, (s) => ({
+      ...s,
+      plants: [...s.plants, temporaryPlant],
+    }));
+    sfx.plant();
 
     try {
-      const newPlant = await createPlantAPI(slot.id, {
+      const newPlant = await createPlantAPI(targetSlotId, {
         row: cell.row,
         col: cell.col,
-        cropKey: brush,
-        plantedOn,
-    });
+        cropKey,
+        plantedOn: plantingDate,
+      });
 
-    updateSlot(slot.id, (s) => ({
-      ...s,
-      plants: [...s.plants, newPlant],
-    }));
-  } catch (error) {
-    console.error("Failed to plant crop:", error);
-    showError(error, "Unable to plant crop. Please try again.", "Couldn’t plant that");
-  } finally {
-    plantingRef.current = false;
-  }
-};
+      updateSlot(targetSlotId, (s) => ({
+        ...s,
+        plants: s.plants.map((p) =>
+          p.id === temporaryId ? newPlant : p
+        ),
+      }));
+    } catch (error) {
+      console.error(`Failed to plant crop at ${cell.row}, ${cell.col}:`, error);
+
+      updateSlot(targetSlotId, (s) => ({
+        ...s,
+        plants: s.plants.filter((p) => p.id !== temporaryId),
+      }));
+
+      showError(error, "Unable to plant crop. Please try again.", "Couldn’t plant that");
+    } finally {
+      plantingCellsRef.current.delete(cellKey);
+    }
+  };
 
 
   const trowelClick = (cell, here) => {
     if (carryPlants.length) return placeGroup(cell);
     if (!here && pickedPlants.length) return placeGroup(cell, pickedPlants);
     if (!here) return;
+    if (!picked.includes(here.id)) sfx.pickup();
     setPicked((ids) =>
       ids.includes(here.id) ? ids.filter((id) => id !== here.id) : [...ids, here.id],
     );
@@ -2045,34 +2108,38 @@ export default function FarMeDashboard() {
       return setBlocked({ taken, outside });
     }
 
-    try {
-      await Promise.all(
-        group.map((p) =>
-          updatePlantAPI(p.id, target(p))
-        )
-      );
+    if (group.some((p) => p.pendingSave)) {
+      return setToolMsg("Still saving a plant. Try again in a second.");
+    }
 
-      updateSlot(slot.id, (s) => ({
+    const slotId = slot.id;
+    const moves = group.map((p) => ({ id: p.id, ...target(p) }));
+    const before = new Map(group.map((p) => [p.id, { row: p.row, col: p.col }]));
+    const apply = (positions) =>
+      updateSlot(slotId, (s) => ({
         ...s,
-        plants: s.plants.map((p) =>
-          ids.has(p.id) ? { ...p, ...target(p) } : p
-        ),
+        plants: s.plants.map((p) => (positions.has(p.id) ? { ...p, ...positions.get(p.id) } : p)),
       }));
 
-      setCarry([]);
-      setPicked([]);
+    apply(new Map(moves.map((m) => [m.id, { row: m.row, col: m.col }])));
+    setCarry([]);
+    setPicked([]);
+    sfx.place();
+    setToolMsg(
+      group.length === 1
+        ? `Moved ${cropByKey(group[0].cropKey).name}.`
+        : `Moved ${group.length} plants together.`
+    );
 
-      setToolMsg(
-        group.length === 1
-          ? `Moved ${cropByKey(group[0].cropKey).name}.`
-          : `Moved ${group.length} plants together.`
-      );
+    try {
+      await movePlantsAPI(slotId, moves.map(({ id, row, col }) => ({ id, row, col })));
     } catch (error) {
       console.error("Failed to move plants:", error);
+      apply(before);
+      setToolMsg("");
       showError(error, "Unable to move plants. Please try again.", "Couldn’t move the plants");
     }
   };
-  
 
   const selectBox = (a, b, add) => {
     const r1 = Math.min(a.row, b.row);
@@ -2098,20 +2165,26 @@ export default function FarMeDashboard() {
   };
 
   const removePlants = async (ids) => {
-    try {
-      await Promise.all(ids.map((id) => deletePlantAPI(id)));
+    const slotId = slot.id;
+    const removed = slot.plants.filter((p) => ids.includes(p.id));
 
-      updateSlot(slot.id, (s) => ({
-        ...s,
-        plants: s.plants.filter((p) => !ids.includes(p.id)),
-      }));
+    updateSlot(slotId, (s) => ({
+      ...s,
+      plants: s.plants.filter((p) => !ids.includes(p.id)),
+    }));
+    setCarry((c) => c.filter((id) => !ids.includes(id)));
+    setPicked((c) => c.filter((id) => !ids.includes(id)));
+    sfx.remove();
 
-      setCarry((c) => c.filter((id) => !ids.includes(id)));
-      setPicked((c) => c.filter((id) => !ids.includes(id)));
-    } catch (error) {
-     console.error("Failed to remove plants:", error);
-      showError(error, "Unable to remove plants. Please try again.", "Couldn’t remove the plants");
-    }
+    const results = await Promise.allSettled(ids.map((id) => deletePlantAPI(id)));
+    const failedIds = ids.filter((_, i) => results[i].status === "rejected");
+    if (!failedIds.length) return;
+
+    const failed = removed.filter((p) => failedIds.includes(p.id));
+    updateSlot(slotId, (s) => ({ ...s, plants: [...s.plants, ...failed] }));
+    const firstError = results.find((r) => r.status === "rejected")?.reason;
+    console.error("Failed to remove plants:", firstError);
+    showError(firstError, "Unable to remove plants. Please try again.", "Couldn’t remove the plants");
   };
 
   const harvestPlants = async ({ action, amount }) => {
@@ -2169,6 +2242,7 @@ export default function FarMeDashboard() {
 
       setPicked((c) => c.filter((id) => !ids.has(id)));
       setHarvesting(null);
+      sfx.harvest();
 
       const what =
         group.length === 1
@@ -2278,26 +2352,46 @@ export default function FarMeDashboard() {
     }));
     saveMarks(ids.map((id) => deleteNotificationAPI(id)));
   };
-    
-  const waterSlot = async () => {
-    if (!slot?.id) return;
 
+  const saveWatering = async (plantIds) => {
+    if (!slot?.id || wateringRef.current) return;
+    wateringRef.current = true;
+
+    const slotId = slot.id;
     const at = Date.now();
+    const only = plantIds ? new Set(plantIds) : null;
+    const before = new Map(slot.plants.map((p) => [p.id, p.lastWatered]));
+    const beforeSlot = slot.lastWatered;
+
+    updateSlot(slotId, (s) => ({
+      ...s,
+      lastWatered: at,
+      plants: s.plants.map((p) => (!only || only.has(p.id) ? { ...p, lastWatered: at } : p)),
+    }));
+    sfx.water();
 
     try {
-      await logWatering(slot.id, at);
-
-      updateSlot(slot.id, (s) => ({
-        ...s,
-        lastWatered: at,
-      }));
+      await logWatering(slotId, at, plantIds);
     } catch (error) {
       console.error("Failed to record watering:", error);
+      updateSlot(slotId, (s) => ({
+        ...s,
+        lastWatered: beforeSlot,
+        plants: s.plants.map((p) => (before.has(p.id) ? { ...p, lastWatered: before.get(p.id) } : p)),
+      }));
       showError(error, "Unable to record watering. Please try again.", "Couldn’t record watering");
+    } finally {
+      wateringRef.current = false;
     }
   };
 
-  
+  const waterSlot = () => saveWatering();
+
+  const waterPlant = (plant) => {
+    if (!plant?.id || plant.pendingSave) return;
+    return saveWatering([plant.id]);
+  };
+
   const requestEdit = (data) => {
     let name = data.name;
     let n = 2;
@@ -2506,12 +2600,22 @@ export default function FarMeDashboard() {
                   className="order-3 basis-full text-sm text-right -mt-2 sm:mt-0 sm:order-none sm:basis-auto"
                   aria-live="polite"
                 >
+                  {slot.plants.length > 0 && (
+                    <p className="font-bold">
+                      {(() => {
+                        const c = wateringCounts(slot, now);
+                        return c.needWater === 0
+                          ? "No plants need water right now"
+                          : `${c.needWater} of ${c.total} plant${c.total === 1 ? "" : "s"} need water`;
+                      })()}
+                    </p>
+                  )}
                   <p className="font-bold">
                     {slot.lastWatered
                       ? `Last watered: ${wateredToday(slot, now) ? "today" : new Date(slot.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })}, ${new Date(slot.lastWatered).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
                       : "Not watered yet"}
                   </p>
-                  {slot.plants.length > 0 && !wateredToday(slot, now) && waterPhase(now) && (
+                  {slot.plants.length > 0 && slotNeedsWater(slot, now) && waterPhase(now) && (
                     <p className={WATER_COPY[waterPhase(now)].good ? "" : "fm-error"}>
                       {WATER_COPY[waterPhase(now)].good
                         ? "Good time to water."
@@ -2759,6 +2863,7 @@ export default function FarMeDashboard() {
                     grid={grid}
                     plantMap={plantMap}
                     asOf={asOf}
+                    now={now}
                     selected={selected}
                     onSelect={setSelected}
                     onActivate={activateCell}
@@ -2882,9 +2987,37 @@ export default function FarMeDashboard() {
                       <p>Stage: {STAGES[getStage(selPlant, selCrop, asOf)].label}</p>
                       <p>Planted: {selPlant.plantedOn}</p>
                       {selPlant.lastHarvested && <p>Last harvested: {selPlant.lastHarvested}</p>}
+                      <p className="font-bold flex items-center gap-1">
+                        <Droplets size={14} aria-hidden="true" />
+                        {!selPlant.lastWatered
+                          ? "Not watered yet \u2013 needs water"
+                          : plantOverdue(selPlant, now)
+                            ? `Overdue by ${daysOverdue(selPlant, now)} day${daysOverdue(selPlant, now) === 1 ? "" : "s"} (last: ${new Date(selPlant.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })})`
+                            : plantNeedsWater(selPlant, now)
+                            ? `Needs water (last: ${new Date(selPlant.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })})`
+                            : plantWateredToday(selPlant, now)
+                              ? `Watered today, ${new Date(selPlant.lastWatered).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                              : `Doesn't need water yet (last: ${new Date(selPlant.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })})`}
+                      </p>
                       <p className="mb-3">
                         Harvest around: {addDays(selPlant.plantedOn, selCrop.maturity)}
                       </p>
+                      <p className="text-sm">
+                        Needs water every {wateringInterval(selPlant)} day{wateringInterval(selPlant) === 1 ? "" : "s"}
+                        {plantNeedsWater(selPlant, now)
+                          ? plantOverdue(selPlant, now)
+                            ? ` \u2013 overdue by ${daysOverdue(selPlant, now)} day${daysOverdue(selPlant, now) === 1 ? "" : "s"}`
+                            : " \u2013 due today"
+                          : ` \u2013 next in ${daysUntilWatering(selPlant, now)} day${daysUntilWatering(selPlant, now) === 1 ? "" : "s"}`}
+                      </p>
+                      {plantNeedsWater(selPlant, now) && (
+                        <button
+                          onClick={() => waterPlant(selPlant)}
+                          className="fm-btn fm-btn--primary flex items-center gap-2 mb-3"
+                        >
+                          <Droplets size={16} /> Water this plant
+                        </button>
+                      )}
                       <p className="text-sm">Use the trowel to move or harvest this plant.</p>
                     </>
                   )}
@@ -2914,20 +3047,52 @@ export default function FarMeDashboard() {
                 />
               </div>
 
-              <div className="flex flex-wrap gap-4 text-sm">
-                <span className="inline-flex items-center gap-2">
-                  <span className={`w-4 h-4 rounded border-2 border-[#8E5A45] bg-[#C4866D]`} />
-                  Empty square
-                </span>
-                {Object.entries(STAGES).map(([k, v]) => (
-                  <span key={k} className="inline-flex items-center gap-2">
-                    <span
-                      className={`w-4 h-4 rounded border-2 border-[#202808]`}
-                      style={{ background: v.color }}
-                    />
-                    {v.label}
-                  </span>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-bold">Jump to:</span>
+                {[30, 90, 180, 365, 540, 730, 1095, 1460].map((days) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() => {
+                      setPlaying(false);
+                      setPreview(days);
+                    }}
+                    aria-pressed={preview === days}
+                    className={`fm-btn ${preview === days ? "fm-btn--primary" : "fm-btn--light"} !min-h-[34px] !px-3 !text-xs`}
+                  >
+                    {days === 365 ? "1 year" : days === 540 ? "18 months" : days === 730 ? "2 years" : days === 1095 ? "3 years" : days === 1460 ? "4 years" : `${days} days`}
+                  </button>
                 ))}
+              </div>
+
+              <div className="flex flex-col gap-2 text-sm">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <span className="font-bold">Watering Status:</span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-[#202808] bg-[#4A90C2]" />
+                    Water today
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-[#202808] bg-[#C0392B]" />
+                    Overdue
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <span className="font-bold">Crop Stage:</span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 rounded border-2 border-[#8E5A45] bg-[#C4866D]" />
+                    Empty square
+                  </span>
+                  {Object.entries(STAGES).map(([k, v]) => (
+                    <span key={k} className="inline-flex items-center gap-2">
+                      <span
+                        className="w-4 h-4 rounded border-2 border-[#202808]"
+                        style={{ background: v.color }}
+                      />
+                      {v.label}
+                    </span>
+                  ))}
+                </div>
               </div>
               <p className="text-sm">
                 One square holds one plant, whatever the crop. Large plants like banana and mango
