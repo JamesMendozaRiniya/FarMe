@@ -158,20 +158,57 @@ function computeGrid(widthM, lengthM) {
   return { rows: 1, cols: 1, size: 5, capacity: 1 };
 }
 const SOIL_WARN_KEY = "fm-soil-warn-off";
-const readSoilMuted = () => {
+const SPACE_WARN_KEY = "fm-space-warn-off";
+const readMuted = (storageKey) => {
   try {
-    const list = JSON.parse(localStorage.getItem(SOIL_WARN_KEY) || "[]");
+    const list = JSON.parse(localStorage.getItem(storageKey) || "[]");
     return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
 };
-const muteSoilWarn = (key) => {
+const muteWarn = (storageKey, cropKey) => {
   try {
-    const list = readSoilMuted();
-    if (!list.includes(key)) localStorage.setItem(SOIL_WARN_KEY, JSON.stringify([...list, key]));
+    const list = readMuted(storageKey);
+    if (!list.includes(cropKey)) localStorage.setItem(storageKey, JSON.stringify([...list, cropKey]));
   } catch {}
 };
+
+const grownRadius = (crop, age, soil) =>
+  (crop.spacing / 2) * Math.min(1, Math.max(0, age / effectiveMaturity(crop, soil)));
+
+const inWords = (days) => {
+  if (days < 60) return `${days} day${days === 1 ? "" : "s"}`;
+  if (days < 365) return `${Math.round(days / 30)} months`;
+  const years = Math.round(days / 36.5) / 10;
+  return `${years} year${years === 1 ? "" : "s"}`;
+};
+
+function spacingIssue(slot, size, cropKey, cell, plantedOn) {
+  const crop = cropByKey(cropKey);
+  if (!crop?.spacing) return null;
+  const tooSmall = Math.min(slot.widthM, slot.lengthM) < crop.spacing / 2;
+  const today = todayIso();
+  const newAge = daysBetween(plantedOn, today);
+  let near = null;
+  slot.plants.forEach((p) => {
+    const other = cropByKey(p.cropKey);
+    if (!other?.spacing) return;
+    const dist = Math.hypot(p.row - cell.row, p.col - cell.col) * size;
+    if (dist >= (crop.spacing + other.spacing) / 2) return;
+    if (near && dist >= near.dist) return;
+    const otherAge = daysBetween(p.plantedOn, today);
+    let inDays = 5000;
+    for (let t = 0; t <= 5000; t += 5) {
+      if (grownRadius(crop, newAge + t, slot.soil) + grownRadius(other, otherAge + t, slot.soil) > dist) {
+        inDays = t;
+        break;
+      }
+    }
+    near = { dist, other, inDays };
+  });
+  return tooSmall || near ? { tooSmall, near } : null;
+}
 
 function getStage(plant, crop, asOf, soil) {
   const age = daysBetween(plant.plantedOn, asOf);
@@ -1573,6 +1610,28 @@ function PlotGrid({
     }
   }
 
+  const reserved = [];
+  plantMap.forEach((plant) => {
+    const crop = cropByKey(plant.cropKey);
+    if (!crop?.spacing) return;
+    const r = (grownRadius(crop, daysBetween(plant.plantedOn, asOf), soil) / grid.size) * CELL;
+    if (r <= CELL / 2) return;
+    reserved.push(
+      <circle
+        key={`reserved-${plant.id}`}
+        cx={plant.col * CELL + CELL / 2}
+        cy={plant.row * CELL + CELL / 2}
+        r={r}
+        fill="none"
+        stroke="#33432B"
+        strokeOpacity={0.35}
+        strokeWidth={1.25}
+        strokeDasharray="4 3"
+        pointerEvents="none"
+      />,
+    );
+  });
+
   return (
     <div
       className={`overflow-auto rounded-xl border-[3px] border-[#202808] bg-[#A66F57] p-2`}
@@ -1602,6 +1661,7 @@ function PlotGrid({
         onKeyDown={onKeyDown}
       >
         {cells}
+        {reserved}
         {box && box.start && (
           <rect
             x={Math.min(box.start.col, box.end.col) * CELL}
@@ -1774,6 +1834,7 @@ export default function FarMeDashboard() {
   const [picked, setPicked] = useState([]); 
   const [carry, setCarry] = useState([]); 
   const [toolMsg, setToolMsg] = useState(""); 
+  const [spaceWarn, setSpaceWarn] = useState(null);
   const [soilWarn, setSoilWarn] = useState(null);
   const [blocked, setBlocked] = useState(null); 
   const [plantedOn, setPlantedOn] = useState(todayIso());
@@ -2023,8 +2084,14 @@ export default function FarMeDashboard() {
         lines: ["Something is already planted there.", "Pick another square, or use the trowel to move it."],
       });
     }
-    if (soilFit(cropByKey(brush), slot.soil) === "poor" && !readSoilMuted().includes(brush))
+    if (soilFit(cropByKey(brush), slot.soil) === "poor" && !readMuted(SOIL_WARN_KEY).includes(brush))
       return setSoilWarn({ cell, mute: false });
+    return checkSpacing(cell);
+  };
+
+  const checkSpacing = (cell) => {
+    const issue = spacingIssue(slot, grid.size, brush, cell, plantedOn);
+    if (issue && !readMuted(SPACE_WARN_KEY).includes(brush)) return setSpaceWarn({ cell, mute: false, ...issue });
     return plantAt(cell);
   };
 
@@ -3255,6 +3322,59 @@ export default function FarMeDashboard() {
         />
       )}
       {notice && <LimitModal title={notice.title} lines={notice.lines} onClose={() => setNotice(null)} />}
+      {spaceWarn && brushCrop && slot && (
+        <Modal title="It will need more space later" onClose={() => setSpaceWarn(null)}>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <p>
+                {brushCrop.name} is small now, but it will spread about {brushCrop.spacing} m wide in about{" "}
+                {effectiveMaturity(brushCrop, slot.soil)} days.
+              </p>
+              {spaceWarn.near && (
+                <p>
+                  The nearest {spaceWarn.near.other.name} is {Math.round(spaceWarn.near.dist * 10) / 10} m away
+                  {spaceWarn.near.inDays === 0
+                    ? " and already covers this spot."
+                    : `, so they will start to crowd each other in about ${inWords(spaceWarn.near.inDays)}.`}
+                </p>
+              )}
+              {spaceWarn.tooSmall && (
+                <p>
+                  This slot is only {Math.min(slot.widthM, slot.lengthM)} m across, which is tight for a full-grown{" "}
+                  {brushCrop.name}.
+                </p>
+              )}
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="fm-check"
+                checked={spaceWarn.mute}
+                onChange={(e) => setSpaceWarn((w) => ({ ...w, mute: e.target.checked }))}
+              />
+              <span>Don’t remind me again for {brushCrop.name}</span>
+            </label>
+            <div className="fm-modal__actions">
+              <button type="button" className="fm-btn fm-btn--light" onClick={() => setSpaceWarn(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="fm-btn fm-btn--primary"
+                onClick={() => {
+                  const cell = spaceWarn.cell;
+                  if (spaceWarn.mute) muteWarn(SPACE_WARN_KEY, brush);
+                  setSpaceWarn(null);
+                  plantAt(cell);
+                }}
+                autoFocus
+              >
+                Plant anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {soilWarn && brushCrop && slot && (
         <Modal title="Not the best soil" onClose={() => setSoilWarn(null)}>
           <div className="flex flex-col gap-4">
@@ -3280,9 +3400,9 @@ export default function FarMeDashboard() {
                 className="fm-btn fm-btn--primary"
                 onClick={() => {
                   const cell = soilWarn.cell;
-                  if (soilWarn.mute) muteSoilWarn(brush);
+                  if (soilWarn.mute) muteWarn(SOIL_WARN_KEY, brush);
                   setSoilWarn(null);
-                  plantAt(cell);
+                  checkSpacing(cell);
                 }}
                 autoFocus
               >
