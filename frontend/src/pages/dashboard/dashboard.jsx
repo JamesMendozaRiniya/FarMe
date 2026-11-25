@@ -18,9 +18,22 @@ import {
 } from "lucide-react";
 import "./dashboard.css";
 import {
-  db,
   getUser,
+  getSlots,
+  createSlotAPI,
+  deleteSlotAPI,
+  updateSlotAPI,
+  createPlantAPI,
+  updatePlantAPI,
+  movePlantsAPI,
+  deletePlantAPI,
+  createHarvestAPI,
+  updateHarvestAPI,
+  deleteHarvestAPI,
   logWatering,
+  getNotificationStates,
+  markNotificationRead,
+  deleteNotificationAPI,
   geocode,
   searchPlaces,
   reverseGeocode,
@@ -36,19 +49,65 @@ import {
   Select,
   DatePicker,
 } from "../../components/shared";
-import { SOILS, CROPS, cropByKey } from "../../data/crops";
+import { SOILS, CROPS, cropByKey, effectiveMaturity, soilFit } from "../../data/crops";
+import { buildChatContext } from "../../utils/chatContext";
+import { sfx } from "../../utils/sfx";
+import {
+  plantWateredToday,
+  slotWateredToday,
+  wateringCounts,
+  plantNeedsWater,
+  slotNeedsWater,
+  daysUntilWatering,
+  daysOverdue,
+  plantOverdue,
+  wateringInterval,
+} from "../../utils/watering";
 
 import dashboardNotif from "../../assets/dashboard-notif.png";
 import dashboardEmpty from "../../assets/dashboard-empty-state.png";
 import trowelImg from "../../assets/trowel.png";
+import sproutShocked from "../../assets/sprout/shocked.png";
+import sproutHappy from "../../assets/sprout/happy.png";
 
 const MAX_DIM_M = 200;
 const MIN_DIM_M = 0.5;
 const MAX_CELLS = 2500;
+const MAX_NAME = 40; 
+const NAME_BAD = /[^\p{L}\p{N} _.'’-]/gu;
+
+function checkName(raw) {
+  const clean = raw.replace(NAME_BAD, "");
+  if (clean !== raw)
+    return {
+      value: clean.slice(0, MAX_NAME),
+      hit: {
+        title: "That character isn't allowed",
+        lines: [
+          "A field name can use letters, numbers, spaces and these marks: _ . ' -",
+          "We removed the ones that don't fit.",
+        ],
+      },
+    };
+  if (raw.length > MAX_NAME)
+    return {
+      value: raw.slice(0, MAX_NAME),
+      hit: {
+        title: "Name is too long",
+        lines: [`A field name can have up to ${MAX_NAME} characters, so we kept the first ${MAX_NAME}.`],
+      },
+    };
+  return { value: raw, hit: null };
+}
+
+const withSuffix = (base, n) => {
+  const tail = ` - ${n}`;
+  return `${base.slice(0, MAX_NAME - tail.length).trimEnd()}${tail}`;
+};
 const CELL = 30; 
 const TROWEL_SIZE = 44; 
-const TROWEL_TIP = { x: 4, y: 4 }; // where the blade tip is inside the png, measured from its bottom-left corner. nudge if the tip feels off
-const MAX_PREVIEW = 365; // how many days ahead the growth slider can go
+const TROWEL_TIP = { x: 4, y: 4 }; 
+const MAX_PREVIEW = 1460; 
 
 const PINE = "#202808";
 const KOMBU = "#33432B";
@@ -64,9 +123,7 @@ const STAGES = {
   ready: { label: "Ready to harvest", color: KOMBU },
 };
 
-/* ---------- helpers ---------- */
 
-// date helpers. i keep dates as yyyy-mm-dd strings so they save cleanly to a database
 const todayIso = () => new Date().toLocaleDateString("en-CA");
 const addDays = (iso, n) => {
   const d = new Date(`${iso}T00:00:00`);
@@ -76,22 +133,22 @@ const addDays = (iso, n) => {
 const daysBetween = (a, b) =>
   Math.round((new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`)) / 864e5);
 const fmt = (n) => String(Number(n.toFixed(2)));
-// philippine seasons: wet = june to november, dry = december to may
+
 const seasonNow = () =>
   new Date().getMonth() >= 5 && new Date().getMonth() <= 10
     ? { key: "wet", label: "Wet season", span: "Jun – Nov" }
     : { key: "dry", label: "Dry season", span: "Dec – May" };
-// checks a width / length the user typed and returns either a number or an error message
+
 function parseDim(text) {
   const t = text.trim().replace(",", ".");
   if (!t) return { error: "Enter a number." };
   if (!/^\d*\.?\d+$/.test(t)) return { error: "Use a positive number, like 20 or 12.5." };
   const value = Number(t);
-  if (value < MIN_DIM_M) return { error: `Min is ${MIN_DIM_M} m.` };
-  if (value > MAX_DIM_M) return { error: `Max is ${MAX_DIM_M} m.` };
+  if (value < MIN_DIM_M) return { error: `Min is ${MIN_DIM_M} m.`, limit: true };
+  if (value > MAX_DIM_M) return { error: `Max is ${MAX_DIM_M} m.`, limit: true };
   return { value };
 }
-// one square = one plant of any crop. squares get bigger on very big plots so the grid stays usable.
+
 function computeGrid(widthM, lengthM) {
   for (const size of [0.5, 1, 2, 5]) {
     const rows = Math.floor(widthM / size + 1e-9);
@@ -100,24 +157,75 @@ function computeGrid(widthM, lengthM) {
   }
   return { rows: 1, cols: 1, size: 5, capacity: 1 };
 }
-// how far along a plant is (sprout -> ready), from its age vs the crop's maturity days
-function getStage(plant, crop, asOf) {
+const SOIL_WARN_KEY = "fm-soil-warn-off";
+const SPACE_WARN_KEY = "fm-space-warn-off";
+const readMuted = (storageKey) => {
+  try {
+    const list = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+};
+const muteWarn = (storageKey, cropKey) => {
+  try {
+    const list = readMuted(storageKey);
+    if (!list.includes(cropKey)) localStorage.setItem(storageKey, JSON.stringify([...list, cropKey]));
+  } catch {}
+};
+
+const grownRadius = (crop, age, soil) =>
+  (crop.spacing / 2) * Math.min(1, Math.max(0, age / effectiveMaturity(crop, soil)));
+
+const inWords = (days) => {
+  if (days < 60) return `${days} day${days === 1 ? "" : "s"}`;
+  if (days < 365) return `${Math.round(days / 30)} months`;
+  const years = Math.round(days / 36.5) / 10;
+  return `${years} year${years === 1 ? "" : "s"}`;
+};
+
+function spacingIssue(slot, size, cropKey, cell, plantedOn) {
+  const crop = cropByKey(cropKey);
+  if (!crop?.spacing) return null;
+  const tooSmall = Math.min(slot.widthM, slot.lengthM) < crop.spacing / 2;
+  const today = todayIso();
+  const newAge = daysBetween(plantedOn, today);
+  let near = null;
+  slot.plants.forEach((p) => {
+    const other = cropByKey(p.cropKey);
+    if (!other?.spacing) return;
+    const dist = Math.hypot(p.row - cell.row, p.col - cell.col) * size;
+    if (dist >= (crop.spacing + other.spacing) / 2) return;
+    if (near && dist >= near.dist) return;
+    const otherAge = daysBetween(p.plantedOn, today);
+    let inDays = 5000;
+    for (let t = 0; t <= 5000; t += 5) {
+      if (grownRadius(crop, newAge + t, slot.soil) + grownRadius(other, otherAge + t, slot.soil) > dist) {
+        inDays = t;
+        break;
+      }
+    }
+    near = { dist, other, inDays };
+  });
+  return tooSmall || near ? { tooSmall, near } : null;
+}
+
+function getStage(plant, crop, asOf, soil) {
   const age = daysBetween(plant.plantedOn, asOf);
   if (age < 0) return "planned";
-  const ratio = age / crop.maturity;
+  const ratio = age / effectiveMaturity(crop, soil);
   if (ratio < 0.25) return "sprout";
   if (ratio < 0.6) return "growing";
   if (ratio < 1) return "flowering";
   return "ready";
 }
-// reminders for the bell: harvest dates within the next 7 days (or already due),
-// grouped by slot + crop + date. this is placeholder logic, later it can come from the backend.
+
 function buildReminders(slots) {
   const groups = {};
   slots.forEach((s) =>
     s.plants.forEach((p) => {
       const c = cropByKey(p.cropKey);
-      const date = addDays(p.plantedOn, c.maturity);
+      const date = addDays(p.plantedOn, effectiveMaturity(c, s.soil));
       const k = `${s.id}-${c.key}-${date}`;
       groups[k] = groups[k] || {
         id: k,
@@ -135,11 +243,7 @@ function buildReminders(slots) {
     .sort((a, b) => a.days - b.days);
 }
 
-/* ---------- watering + notifications ---------- */
 
-// my watering rule of thumb: early morning or before sunset is best. midday is too hot, and at night the leaves stay wet.
-// phases: morning 5-10, midday 10-16, evening 16-19, night 19+. before 5 i send nothing.
-// todo: if the rule changes (per crop, rain, soil moisture), only waterPhase / WATER_COPY need to change.
 const dayOf = (ms) => new Date(ms).toLocaleDateString("en-CA");
 function waterPhase(now) {
   const h = new Date(now).getHours();
@@ -175,16 +279,15 @@ const WATER_COPY = {
     tip: "Wet leaves overnight invite fungus. If the soil is very dry, water just the base. Otherwise do it first thing tomorrow.",
   },
 };
-const wateredToday = (slot, now) => !!slot.lastWatered && dayOf(slot.lastWatered) === dayOf(now);
+const wateredToday = (slot, now) => slotWateredToday(slot, now);
 
-// one notification per slot that still needs water today.
-// the id includes the phase, so every new phase is a new notification. that's how the "remind me again" works.
+
 function buildWaterNotifs(slots, now) {
   const phase = waterPhase(now);
   if (!phase) return [];
   const c = WATER_COPY[phase];
   return slots
-    .filter((s) => s.plants.length > 0 && !wateredToday(s, now))
+    .filter((s) => s.plants.length > 0 && slotNeedsWater(s, now))
     .map((s) => ({
       id: `water-${s.id}-${dayOf(now)}-${phase}`,
       kind: "water",
@@ -195,7 +298,7 @@ function buildWaterNotifs(slots, now) {
       slotId: s.id,
     }));
 }
-// todo(backend): the server should create these (scheduled job / push) so they also arrive when the app is closed.
+
 function buildNotifications(slots, now) {
   const harvests = buildReminders(slots).map((r) => ({
     id: `harvest-${r.id}`,
@@ -208,9 +311,7 @@ function buildNotifications(slots, now) {
   }));
   return [...buildWaterNotifs(slots, now), ...harvests];
 }
-/* ---------- weather + suggestions ---------- */
 
-// react hook: loads the weather whenever the coordinates change
 function useWeather(lat, lon) {
   const [state, setState] = useState({ data: null, loading: false });
   useEffect(() => {
@@ -220,7 +321,7 @@ function useWeather(lat, lon) {
     fetchWeather(lat, lon)
       .then((data) => live && setState({ data, loading: false }))
       .catch((e) => {
-        console.warn("[farme] weather failed:", e.message); // shows up in the browser console if something goes wrong
+        console.warn("[farme] weather failed:", e.message); 
         if (live) setState({ data: null, loading: false });
       });
     return () => {
@@ -230,7 +331,6 @@ function useWeather(lat, lon) {
   return state;
 }
 
-// fallback recommendations: scores every crop on soil, season and temperature, then returns the top 3
 function localRecommend({ soil, areaM2, season, weather }) {
   return CROPS.map((c) => {
     const why = [];
@@ -254,7 +354,7 @@ function localRecommend({ soil, areaM2, season, weather }) {
     .map(({ key, reason }) => ({ key, reason }));
 }
 
-// todo(backend): POST /recommend (set AI_ENDPOINT in farmeApi.js). the server prompts Claude and returns { recommendations: [{ key, reason }] }, using only the crop keys sent.
+
 async function getRecommendations(ctx) {
   const ai = await fetchRecommendations({
     ...ctx,
@@ -266,9 +366,6 @@ async function getRecommendations(ctx) {
   return { items: localRecommend(ctx), source: "rules" };
 }
 
-/* ---------- small ui pieces + the add slot flow ---------- */
-
-// placeholder picture of a field (swap it for a real image later, keep the size fixed)
 function SlotThumb() {
   return (
     <svg
@@ -303,10 +400,7 @@ function SlotThumb() {
   );
 }
 
-// weather + season in one bar: weather on the left, season on the right.
-// props: wx = { data, loading } from useWeather, season = { key, label, span } from seasonNow,
-//        onSetLocation = optional, shows a "set location" link when there's no weather
-// styles are in dashboard.css (.fm-conditions). the season half is kombu in the wet season and copper in the dry season.
+
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
@@ -636,10 +730,7 @@ function SlotTitle({ slot }) {
   );
 }
 
-/* ---------- location picker: search, current location, or drop a pin on the map ---------- */
 
-// leaflet (the map library) loads from a cdn the first time a map shows, so there's nothing to install ! what a nice
-// if it can't load (offline, blocked), the picker still works with search and "use my location".
 const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4";
 let leafletPromise = null;
 function loadLeaflet() {
@@ -654,7 +745,7 @@ function loadLeaflet() {
       js.src = `${LEAFLET}/leaflet.js`;
       js.onload = () => resolve(window.L);
       js.onerror = () => {
-        leafletPromise = null; // so it can try again next time
+        leafletPromise = null; 
         reject(new Error("map failed to load"));
       };
       document.head.appendChild(js);
@@ -663,14 +754,11 @@ function loadLeaflet() {
   return leafletPromise;
 }
 
-const PH_CENTER = [12.9, 122.8]; // the map starts on the philippines until a place is picked
-
-// the map. tap anywhere or drag the pin to choose the exact spot.
-// props: value = { lat, lon }, onPick(lat, lon) = called with the chosen spot
+const PH_CENTER = [12.9, 122.8]; 
 function PinMap({ value, onPick }) {
   const box = useRef(null);
-  const mapRef = useRef({}); // { map, marker } once the map is ready
-  const valueRef = useRef(value); // always the latest value, so a slow map load never uses an old one
+  const mapRef = useRef({}); 
+  const valueRef = useRef(value); 
   const pickRef = useRef(onPick);
   valueRef.current = value;
   pickRef.current = onPick;
@@ -723,7 +811,7 @@ function PinMap({ value, onPick }) {
     };
   }, []);
 
-  // move the pin when the spot changes from outside (search, "use my location")
+  
   useEffect(sync, [value.lat, value.lon]);
 
   if (failed)
@@ -742,16 +830,13 @@ function PinMap({ value, onPick }) {
   );
 }
 
-// location field: type to search places, use the device's location, or tap the map.
-// props: value = { text, lat, lon, place }, onChange = gets the new value, error = message under the field
+
 function LocationPicker({ value, onChange, error }) {
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState("idle"); // idle | loading | empty | error (so the user always sees what's going on)
+  const [status, setStatus] = useState("idle"); 
   const [locating, setLocating] = useState(false);
   const [note, setNote] = useState("");
-  const asked = useRef(0); // counts name lookups so only the newest answer gets used
-
-  // look up suggestions 300ms after the last key. nothing to look up once a place is picked.
+  const asked = useRef(0); 
   useEffect(() => {
     const q = value.text.trim();
     if (value.lat != null || q.length < 3) {
@@ -780,7 +865,7 @@ function LocationPicker({ value, onChange, error }) {
     };
   }, [value.text, value.lat]);
 
-  // typing again clears the picked place, so the coordinates always match the text
+ 
   const type = (text) => {
     asked.current++;
     setNote("");
@@ -793,7 +878,7 @@ function LocationPicker({ value, onChange, error }) {
     onChange({ text: r.label, lat: r.lat, lon: r.lon, place: r.label });
   };
 
-  // a spot from the map or the device: show it right away, then look up its name
+
   const setSpot = async (lat, lon) => {
     const id = ++asked.current;
     const coords = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
@@ -803,12 +888,12 @@ function LocationPicker({ value, onChange, error }) {
     try {
       label = await reverseGeocode(lat, lon);
     } catch {
-      /* no name found: keep the coordinates */
+      
     }
     if (label && id === asked.current) onChange({ text: label, lat, lon, place: label });
   };
 
-  // ask the browser for the device's location (needs https or localhost, plus the user's permission)
+  
   const useMyLocation = () => {
     if (!navigator.geolocation)
       return setNote(
@@ -900,6 +985,29 @@ function LocationPicker({ value, onChange, error }) {
   );
 }
 
+
+function LimitModal({ title, lines, onClose }) {
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <Img src={sproutShocked} alt="" w={72} h={72} label="sprout" />
+          <div role="alert" className="flex flex-col gap-1 min-w-0">
+            {lines.map((t) => (
+              <p key={t} className="break-words">
+                {t}
+              </p>
+            ))}
+          </div>
+        </div>
+        <button type="button" onClick={onClose} className="fm-btn fm-btn--primary" autoFocus>
+          Got it
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   const editing = !!slot;
   const [name, setName] = useState(slot ? slot.name : defaultName);
@@ -914,7 +1022,7 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
           place: slot.place ?? null,
         }
       : { text: "", lat: null, lon: null, place: null },
-  ); // the chosen location
+  ); 
   const [geoErr, setGeoErr] = useState("");
   const setLoc = (v) => {
     setGeoErr("");
@@ -923,27 +1031,69 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   const [soil, setSoil] = useState(slot ? slot.soil : "");
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [limit, setLimit] = useState(null); 
   const pw = parseDim(w);
   const pl = parseDim(l);
   const area = pw.value && pl.value ? pw.value * pl.value : null;
   const locError = !loc.text.trim() ? "Pick or search for your town or city." : "";
   const soilError = !soil ? "Pick a soil type." : "";
 
+  
+  const closeLimit = () => {
+    const id = limit?.focusId;
+    setLimit(null);
+    if (id) setTimeout(() => document.getElementById(id)?.focus(), 0);
+  };
+  
+  const changeName = (e) => {
+    const { value, hit } = checkName(e.target.value);
+    setName(value);
+    if (hit) setLimit({ focusId: "slot-name", ...hit });
+  };
+  
+  const changeDim = (label, id, setValue) => (e) => {
+    const text = e.target.value;
+    const t = text.trim().replace(",", ".");
+    if (/^\d*\.?\d+$/.test(t) && Number(t) > MAX_DIM_M) {
+      setValue(String(MAX_DIM_M));
+      setLimit({
+        focusId: id,
+        title: `${label} is too big`,
+        lines: [`The biggest allowed is ${MAX_DIM_M} m, so we set it to ${MAX_DIM_M} m.`],
+      });
+      return;
+    }
+    setValue(text);
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setTried(true);
+   
+    const hit = [
+      ["Width", pw, "slot-w"],
+      ["Length", pl, "slot-l"],
+    ].filter(([, p]) => p.limit);
+    if (hit.length) {
+      setLimit({
+        focusId: hit[0][2],
+        title: "Size is out of range",
+        lines: hit.map(([label]) => `${label} must be between ${MIN_DIM_M} m and ${MAX_DIM_M} m.`),
+      });
+      return;
+    }
     if (pw.error || pl.error || locError || soilError) return;
     setBusy(true);
-    // use the picked place if there is one, otherwise try to find what was typed
+  
     let geo = loc.lat != null ? loc : null;
     if (!geo) {
       try {
         geo = await geocode(loc.text.trim());
       } catch {
-        /* offline: the slot still gets created,, just without weather */
+       
       }
     }
-    // when editing, a place i can't find is an error (para dili ma-lose ang weather location by accident)
+    
     if (editing && !geo) {
       setBusy(false);
       return setGeoErr("We couldn't find that place. Pick one from the suggestions.");
@@ -958,7 +1108,7 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
       lon: geo?.lon ?? null,
       place: geo?.place ?? null,
     });
-    setBusy(false); // when editing, the form stays open under the "save changes?" dialog
+    setBusy(false); 
   };
 
   const err = (id, show, text) => (
@@ -975,7 +1125,7 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
         id={id}
         inputMode="decimal"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={changeDim(label.split(" ")[0], id, setValue)}
         placeholder="e.g. 20"
         aria-invalid={(tried || value) && parsed.error ? "true" : "false"}
         aria-describedby={`${id}-err`}
@@ -986,50 +1136,57 @@ function AddSlotModal({ slot, defaultName, onSubmit, onClose }) {
   );
 
   return (
-    <Modal title={editing ? "Edit slot" : "Add a slot"} onClose={onClose}>
-      <form onSubmit={submit} className="flex flex-col gap-2" noValidate>
-        <div>
-          <label htmlFor="slot-name" className="block font-bold mb-1">
-            Field name
-          </label>
-          <input
-            id="slot-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="fm-input"
-          />
-        </div>
-        <p className="font-bold mt-2" aria-live="polite">
-          Plot size: {area ? `${fmt(area)} m²` : "—"}
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          {dim("Width (m)", "slot-w", w, setW, pw)}
-          {dim("Length (m)", "slot-l", l, setL, pl)}
-        </div>
-        <LocationPicker value={loc} onChange={setLoc} error={tried ? locError || geoErr : ""} />
-        <div>
-          <label htmlFor="slot-soil" className="block font-bold mb-1">
-            Soil type
-          </label>
-          <Select
-            id="slot-soil"
-            value={soil}
-            onChange={setSoil}
-            options={SOILS}
-            placeholder="Select soil type"
-            describedBy="slot-soil-err"
-          />
-          {err("slot-soil", tried, soilError)}
-        </div>
-        <button type="submit" disabled={busy} className={`fm-btn fm-btn--primary mt-1`}>
-          {editing ? (busy ? "Checking…" : "Save changes") : busy ? "Creating…" : "Create slot"}
-        </button>
-      </form>
-    </Modal>
+    <>
+      <Modal title={editing ? "Edit slot" : "Add a slot"} onClose={() => !limit && onClose()}>
+        <form onSubmit={submit} className="flex flex-col gap-2" noValidate>
+          <div>
+            <label htmlFor="slot-name" className="block font-bold mb-1">
+              Field name
+            </label>
+            <input
+              id="slot-name"
+              value={name}
+              onChange={changeName}
+              aria-describedby="slot-name-count"
+              className="fm-input"
+            />
+            <p id="slot-name-count" className="text-xs text-right mt-1">
+              {name.length}/{MAX_NAME}
+            </p>
+          </div>
+          <p className="font-bold mt-2" aria-live="polite">
+            Plot size: {area ? `${fmt(area)} m²` : "—"}
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {dim("Width (m)", "slot-w", w, setW, pw)}
+            {dim("Length (m)", "slot-l", l, setL, pl)}
+          </div>
+          <LocationPicker value={loc} onChange={setLoc} error={tried ? locError || geoErr : ""} />
+          <div>
+            <label htmlFor="slot-soil" className="block font-bold mb-1">
+              Soil type
+            </label>
+            <Select
+              id="slot-soil"
+              value={soil}
+              onChange={setSoil}
+              options={SOILS}
+              placeholder="Select soil type"
+              describedBy="slot-soil-err"
+            />
+            {err("slot-soil", tried, soilError)}
+          </div>
+          <button type="submit" disabled={busy} className={`fm-btn fm-btn--primary mt-1`}>
+            {editing ? (busy ? "Checking…" : "Save changes") : busy ? "Creating…" : "Create slot"}
+          </button>
+        </form>
+      </Modal>
+      {limit && <LimitModal title={limit.title} lines={limit.lines} onClose={closeLimit} />}
+    </>
   );
 }
 
-/* step 2: success summary */
+
 function SuccessModal({ slot, onProceed, onClose }) {
   return (
     <Modal title="Slot created successfully!" onClose={onClose}>
@@ -1052,7 +1209,7 @@ function SuccessModal({ slot, onProceed, onClose }) {
   );
 }
 
-/* step 3: slot details + recommended crops */
+
 function SlotDetailModal({ slot, wx, onPick, onClose }) {
   const [recs, setRecs] = useState(null);
   useEffect(() => {
@@ -1107,7 +1264,7 @@ function SlotDetailModal({ slot, wx, onPick, onClose }) {
                     </span>
                     <p className="font-display font-bold">{c.name}</p>
                     <p className="text-xs">
-                      {c.en} · ~{c.maturity} days
+                      {c.en} · ~{effectiveMaturity(c, slot.soil)} days
                     </p>
                     <p className="text-sm flex-1">{r.reason}</p>
                     <button
@@ -1130,10 +1287,23 @@ function SlotDetailModal({ slot, wx, onPick, onClose }) {
   );
 }
 
-// the notification bell in the header + its dropdown (watering and harvest reminders).
-function ReminderBell({ notifs, onRead, onReadAll, onDelete, onDeleteAll, onOpen }) {
-  const [open, setOpen] = useState(false);
-  const unread = notifs.filter((n) => !n.read).length;
+
+function ReminderBell({ notifs, loading, onRead, onReadAll, onDelete, onDeleteAll, onOpen }) {
+  
+  const wantsMail = () => window.location.hash === "#notifications";
+  const [open, setOpen] = useState(wantsMail);
+  useEffect(() => {
+    const check = () => {
+      if (!wantsMail()) return;
+      setOpen(true);
+      
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    };
+    check();
+    window.addEventListener("hashchange", check);
+    return () => window.removeEventListener("hashchange", check);
+  }, []);
+  const unread = loading ? 0 : notifs.filter((n) => !n.read).length;
   const small = "!min-h-[34px] !px-2 !text-xs flex items-center gap-1";
   const tiny = "!min-h-[32px] !w-[32px] !px-0 flex items-center justify-center";
   return (
@@ -1157,7 +1327,7 @@ function ReminderBell({ notifs, onRead, onReadAll, onDelete, onDeleteAll, onOpen
         >
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="font-display font-bold">Notifications</p>
-            {notifs.length > 0 && (
+            {!loading && notifs.length > 0 && (
               <div className="flex gap-2">
                 <button
                   onClick={onReadAll}
@@ -1172,14 +1342,25 @@ function ReminderBell({ notifs, onRead, onReadAll, onDelete, onDeleteAll, onOpen
               </div>
             )}
           </div>
-          {notifs.length === 0 && (
+          {loading && (
+            <div className="flex flex-col gap-2" aria-busy="true">
+              <span className="sr-only">Loading your notifications</span>
+              {[0, 1, 2].map((i) => (
+                <div key={i} aria-hidden="true" className="fm-panel p-2 flex flex-col gap-2">
+                  <span className="fm-bone fm-bone--title" />
+                  <span className="fm-bone fm-bone--line" />
+                </div>
+              ))}
+            </div>
+          )}
+          {!loading && notifs.length === 0 && (
             <p className="text-sm">
               You're all caught up. Watering and harvest reminders show up here once you plant
               something.
             </p>
           )}
           <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
-            {notifs.map((n) => (
+            {!loading && notifs.map((n) => (
               <div
                 key={n.id}
                 className={`fm-panel p-2 text-sm flex items-start gap-2 ${n.read ? "opacity-60" : ""} ${n.tone === "warn" && !n.read ? "!border-[#8A3A28]" : ""}`}
@@ -1234,11 +1415,13 @@ function ReminderBell({ notifs, onRead, onReadAll, onDelete, onDeleteAll, onOpen
   );
 }
 
-// the planting grid. every square is clickable and shows the crop's emoji + its growth stage color
+
 function PlotGrid({
   grid,
   plantMap,
   asOf,
+  soil,
+  now,
   selected,
   onSelect,
   onActivate,
@@ -1246,10 +1429,9 @@ function PlotGrid({
   tool,
   carry,
   picked,
+  brush,
 }) {
   const { rows, cols } = grid;
-  // drag with the trowel to select a block of squares. box = { start, end } while the mouse is down.
-  // a drag that ends on the square it started on is just a click, so the click handler on the square toggles it.
   const svgRef = useRef(null);
   const startRef = useRef(null);
   const [box, setBox] = useState(null);
@@ -1266,13 +1448,11 @@ function PlotGrid({
   const dragging = box !== null;
   useEffect(() => {
     if (!dragging) return;
-    // window listeners, so the drag keeps working when the mouse leaves the grid
     const move = (e) => setBox({ start: startRef.current, end: cellAt(e) });
     const up = (e) => {
       const end = cellAt(e);
       const start = startRef.current;
       setBox(null);
-      // shift / ctrl / cmd while dragging adds to the selection, a plain drag starts a new one
       if (start.row !== end.row || start.col !== end.col)
         onBox(start, end, e.shiftKey || e.ctrlKey || e.metaKey);
     };
@@ -1285,10 +1465,22 @@ function PlotGrid({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", cancel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [dragging]);
-  // where the mouse is, so the trowel image can follow it (touch screens have no pointer to follow)
+  
   const [ptr, setPtr] = useState(null);
+  const [hoverCell, setHoverCell] = useState(null);
+  const planting = !!brush && !tool;
+  const moving =
+    tool === "trowel"
+      ? carry.length
+        ? carry
+        : [...plantMap.values()].filter((p) => picked.includes(p.id))
+      : [];
+  const hovering = planting || moving.length > 0;
+  useEffect(() => {
+    if (!hovering) setHoverCell(null);
+  }, [hovering]);
   const onKeyDown = (e) => {
     const map = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
     if (map[e.key]) {
@@ -1314,8 +1506,8 @@ function PlotGrid({
       const plant = plantMap.get(`${row}-${col}`);
       const crop = plant ? cropByKey(plant.cropKey) : null;
       const isSel = selected && selected.row === row && selected.col === col;
-      const lifted = !!(plant && carry.some((c) => c.id === plant.id)); // plants on the trowel fade in their old squares
-      const isPicked = !!(plant && picked.includes(plant.id)); // plants selected with the trowel get a copper ring and a check
+      const lifted = !!(plant && carry.some((c) => c.id === plant.id)); 
+      const isPicked = !!(plant && picked.includes(plant.id)); 
       cells.push(
         <g
           key={`${row}-${col}`}
@@ -1334,7 +1526,7 @@ function PlotGrid({
             width={CELL - 2}
             height={CELL - 2}
             rx={5}
-            fill={plant ? STAGES[getStage(plant, crop, asOf)].color : COPPER}
+            fill={plant ? STAGES[getStage(plant, crop, asOf, soil)].color : COPPER}
             stroke={plant ? PINE : "#8E5A45"}
             strokeWidth={plant ? 2 : 1}
             strokeDasharray={lifted ? "4 3" : undefined}
@@ -1349,6 +1541,23 @@ function PlotGrid({
             >
               {crop.emoji}
             </text>
+          )}
+          {plant && plantNeedsWater(plant, now) && (
+            <g pointerEvents="none">
+              <title>{plantOverdue(plant, now) ? `Overdue by ${daysOverdue(plant, now)} day${daysOverdue(plant, now) === 1 ? "" : "s"}` : "Water today"}</title>
+              <circle
+                cx={col * CELL + 10}
+                cy={row * CELL + CELL - 10}
+                r={8}
+                fill={plantOverdue(plant, now) ? "#C0392B" : "#4A90C2"}
+                stroke={PINE}
+                strokeWidth={1.5}
+              />
+              <path
+                d={`M${col * CELL + 10} ${row * CELL + CELL - 15} q3.6 4 3.6 6 a3.6 3.6 0 0 1 -7.2 0 q0 -2 3.6 -6 z`}
+                fill="#FBF6EA"
+              />
+            </g>
           )}
           {isPicked && (
             <>
@@ -1414,6 +1623,157 @@ function PlotGrid({
     }
   }
 
+  const reserved = [];
+  plantMap.forEach((plant) => {
+    if (!planting) return;
+    const crop = cropByKey(plant.cropKey);
+    if (!crop?.spacing) return;
+    const r = (grownRadius(crop, daysBetween(plant.plantedOn, asOf), soil) / grid.size) * CELL;
+    if (r <= CELL / 2) return;
+    reserved.push(
+      <circle
+        key={`reserved-${plant.id}`}
+        cx={plant.col * CELL + CELL / 2}
+        cy={plant.row * CELL + CELL / 2}
+        r={r}
+        fill="none"
+        stroke="#33432B"
+        strokeOpacity={0.35}
+        strokeWidth={1.25}
+        strokeDasharray="4 3"
+        pointerEvents="none"
+      />,
+    );
+  });
+
+  const selPlantHere = !tool && selected ? plantMap.get(`${selected.row}-${selected.col}`) : null;
+  const selPlantCrop = selPlantHere ? cropByKey(selPlantHere.cropKey) : null;
+  const selCircle =
+    selPlantCrop?.spacing > 0 ? (
+      <circle
+        key="selected-spread"
+        cx={selPlantHere.col * CELL + CELL / 2}
+        cy={selPlantHere.row * CELL + CELL / 2}
+        r={(selPlantCrop.spacing / 2 / grid.size) * CELL}
+        fill="rgba(51,67,43,0.12)"
+        stroke={PINE}
+        strokeOpacity={0.6}
+        strokeWidth={1.5}
+        strokeDasharray="5 4"
+        pointerEvents="none"
+      />
+    ) : null;
+  let moveGhost = null;
+  if (
+    moving.length &&
+    hoverCell &&
+    (carry.length > 0 || !plantMap.get(`${hoverCell.row}-${hoverCell.col}`))
+  ) {
+    const group = [...moving].sort((a, b) => a.row - b.row || a.col - b.col);
+    const rank = (values) =>
+      new Map([...new Set(values)].sort((a, b) => a - b).map((v, i) => [v, i]));
+    const rowRank = rank(group.map((p) => p.row));
+    const colRank = rank(group.map((p) => p.col));
+    const ids = new Set(group.map((p) => p.id));
+    const targets = group.map((p) => ({
+      plant: p,
+      row: hoverCell.row + rowRank.get(p.row) - rowRank.get(group[0].row),
+      col: hoverCell.col + colRank.get(p.col) - colRank.get(group[0].col),
+    }));
+    const inside = (t) => t.row >= 0 && t.col >= 0 && t.row < rows && t.col < cols;
+    const bad = targets.some((t) => {
+      if (!inside(t)) return true;
+      const other = plantMap.get(`${t.row}-${t.col}`);
+      return !!(other && !ids.has(other.id));
+    });
+    moveGhost = (
+      <g pointerEvents="none" aria-hidden="true">
+        {targets.filter(inside).map((t) => {
+          const c = cropByKey(t.plant.cropKey);
+          const cx = t.col * CELL + CELL / 2;
+          const cy = t.row * CELL + CELL / 2;
+          return (
+            <g key={`move-${t.plant.id}`}>
+              {c?.spacing > 0 && (
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={(c.spacing / 2 / grid.size) * CELL}
+                  fill={bad ? "rgba(192,57,43,0.10)" : "rgba(51,67,43,0.12)"}
+                  stroke={bad ? "#C0392B" : PINE}
+                  strokeOpacity={0.6}
+                  strokeWidth={1.5}
+                  strokeDasharray="5 4"
+                />
+              )}
+              <rect
+                x={t.col * CELL + 1}
+                y={t.row * CELL + 1}
+                width={CELL - 2}
+                height={CELL - 2}
+                rx={5}
+                fill={bad ? "#C0392B" : STAGES[getStage(t.plant, c, asOf, soil)].color}
+                fillOpacity={0.55}
+                stroke={bad ? "#C0392B" : PINE}
+                strokeOpacity={0.7}
+                strokeWidth={2}
+                strokeDasharray="4 3"
+              />
+              {!bad && (
+                <text x={cx} y={cy + 6} textAnchor="middle" fontSize="18" opacity={0.5}>
+                  {c.emoji}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </g>
+    );
+  }
+  const brushCrop = planting ? cropByKey(brush) : null;
+  const hoverTaken = !!(hoverCell && plantMap.get(`${hoverCell.row}-${hoverCell.col}`));
+  const ghost =
+    brushCrop && hoverCell ? (
+      <g pointerEvents="none" aria-hidden="true">
+        {brushCrop.spacing > 0 && (
+          <circle
+            cx={hoverCell.col * CELL + CELL / 2}
+            cy={hoverCell.row * CELL + CELL / 2}
+            r={(brushCrop.spacing / 2 / grid.size) * CELL}
+            fill="rgba(51,67,43,0.12)"
+            stroke={PINE}
+            strokeOpacity={0.6}
+            strokeWidth={1.5}
+            strokeDasharray="5 4"
+          />
+        )}
+        <rect
+          x={hoverCell.col * CELL + 1}
+          y={hoverCell.row * CELL + 1}
+          width={CELL - 2}
+          height={CELL - 2}
+          rx={5}
+          fill={hoverTaken ? "#C0392B" : STAGES.sprout.color}
+          fillOpacity={0.55}
+          stroke={hoverTaken ? "#C0392B" : PINE}
+          strokeOpacity={0.7}
+          strokeWidth={2}
+          strokeDasharray="4 3"
+        />
+        {!hoverTaken && (
+          <text
+            x={hoverCell.col * CELL + CELL / 2}
+            y={hoverCell.row * CELL + CELL / 2 + 6}
+            textAnchor="middle"
+            fontSize="18"
+            opacity={0.5}
+          >
+            {brushCrop.emoji}
+          </text>
+        )}
+      </g>
+    ) : null;
+
   return (
     <div
       className={`overflow-auto rounded-xl border-[3px] border-[#202808] bg-[#A66F57] p-2`}
@@ -1433,17 +1793,26 @@ function PlotGrid({
           margin: "0 auto",
           maxWidth: "none",
           cursor: tool ? "none" : undefined,
-          // with the trowel, dragging selects squares instead of scrolling the page
           touchAction: canDrag ? "none" : undefined,
           userSelect: "none",
         }}
         onDragStart={(e) => e.preventDefault()}
+        onPointerMove={(e) => {
+          if (!hovering || e.pointerType === "touch") return;
+          const c = cellAt(e);
+          setHoverCell((h) => (h && h.row === c.row && h.col === c.col ? h : c));
+        }}
+        onPointerLeave={() => setHoverCell(null)}
         tabIndex={0}
         role="group"
         aria-label={`Planting grid, ${rows} rows by ${cols} columns. Arrow keys move, Enter plants or selects.`}
         onKeyDown={onKeyDown}
       >
         {cells}
+        {reserved}
+        {selCircle}
+        {ghost}
+        {moveGhost}
         {box && box.start && (
           <rect
             x={Math.min(box.start.col, box.end.col) * CELL}
@@ -1458,7 +1827,7 @@ function PlotGrid({
           />
         )}
       </svg>
-      {/* the trowel is the cursor while it's picked. if it holds plants, the first emoji (and how many) rides along */}
+      {}
       {tool && ptr && (
         <div
           aria-hidden="true"
@@ -1500,12 +1869,11 @@ function Stat({ label, value, hint }) {
   );
 }
 
-/* harvest dialog for one or more ready plants: harvest and keep them (they grow again) or harvest and remove them */
+
 function HarvestModal({ plants, onSubmit, onClose }) {
   const [amount, setAmount] = useState("");
   const [action, setAction] = useState("keep");
   const many = plants.length > 1;
-  // "🍅 Kamatis ×3, 🍆 Talong ×1"
   const summary = Object.values(
     plants.reduce((acc, p) => {
       const crop = cropByKey(p.cropKey);
@@ -1587,45 +1955,75 @@ function HarvestModal({ plants, onSubmit, onClose }) {
   );
 }
 
-/* ---------- main ---------- */
 
-// main screen: owns all the state and wires the nav, header, slot list, slot view and modals together
 export default function FarMeDashboard() {
-  // state: slots = all saved fields, loaded = the db finished loading
   const [slots, setSlots] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 150);
+    return () => clearTimeout(t);
+  }, []);
+  const ready = loaded;
   const [openId, setOpenId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState(null); 
+  const [renameText, setRenameText] = useState(""); 
+  const [renameAsk, setRenameAsk] = useState(null); 
+  const [renameLimit, setRenameLimit] = useState(null); 
+  const [renameBusy, setRenameBusy] = useState(false);
+  const askingRef = useRef(false); 
   const [showAdd, setShowAdd] = useState(false);
-  const [showEdit, setShowEdit] = useState(false); // edit the open slot
-  const [pendingEdit, setPendingEdit] = useState(null); // { data, changes }: edits waiting for "save these changes?"
-  const [confirm, setConfirm] = useState(null); // { type: "plant" | "notif" | "notifs", id? }: a delete waiting for a yes / no
-  const [toDelete, setToDelete] = useState(null); // the slot waiting for a yes / no
-  const [harvesting, setHarvesting] = useState(null); // ids of the plants in the harvest dialog
-  const [flow, setFlow] = useState(null); // { step: "success" | "detail", id }
-  // brush = the crop that gets planted when an empty square is clicked
-  const [brush, setBrush] = useState(null); // the crop key chosen for planting
+  const [showEdit, setShowEdit] = useState(false); 
+  const [pendingEdit, setPendingEdit] = useState(null); 
+  const [updated, setUpdated] = useState(null); 
+  const [confirm, setConfirm] = useState(null); 
+  const [toDelete, setToDelete] = useState(null); 
+  const [harvesting, setHarvesting] = useState(null); 
+  const [brush, setBrush] = useState(null); 
   const [selected, setSelected] = useState(null);
-  const [tool, setTool] = useState(null); // "trowel" while the trowel is picked
-  const [picked, setPicked] = useState([]); // ids of the plants selected with the trowel (select as many as you like)
-  const [carry, setCarry] = useState([]); // ids of the plants the trowel is holding, to put down together
-  const [toolMsg, setToolMsg] = useState(""); // short message about what the trowel just did
+  const [tool, setTool] = useState(null); 
+  const [picked, setPicked] = useState([]); 
+  const [carry, setCarry] = useState([]); 
+  const [toolMsg, setToolMsg] = useState(""); 
+  const [spaceWarn, setSpaceWarn] = useState(null);
+  const [soilWarn, setSoilWarn] = useState(null);
+  const [blocked, setBlocked] = useState(null); 
   const [plantedOn, setPlantedOn] = useState(todayIso());
   const [preview, setPreview] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [notice, setNotice] = useState(null); 
+  const plantingCellsRef = useRef(new Set()); 
+  const wateringRef = useRef(false);
 
-  // load the slots once on start, then save them every time they change
-  // todo(backend): i save the whole list on every change. later, call the create / update / delete endpoints inside each action instead.
-  // todo(backend): when loadSlots is a real request it must throw on failure, not return []. otherwise a failed load gets saved back over the user's slots. show an error here instead.
+
+  const showError = (error, fallback, title = "Something went wrong") => {
+    sfx.error();
+    const msg = error?.message || fallback;
+    if (/already occupied/i.test(msg)) {
+      getSlots().then(setSlots).catch(() => {});
+      return setNotice({
+        title: "That square is taken",
+        lines: ["Something is already planted there.", "Pick another square, or use the trowel to move it."],
+      });
+    }
+    setNotice({ title, lines: [msg] });
+  };
+
   useEffect(() => {
-    db.loadSlots().then((s) => {
-      setSlots(s);
-      setLoaded(true);
-    });
+    async function loadDashboard() {
+      try {
+        const data = await getSlots();
+        setSlots(data);
+      } catch (error) {
+        console.error("Failed to load slots:", error);
+        showError(null, "Unable to load your slots. Please try again.", "Couldn’t load your slots");
+      } finally {
+        setLoaded(true);
+      }
+    }
+
+    loadDashboard();
   }, []);
-  useEffect(() => {
-    if (loaded) db.saveSlots(slots);
-  }, [slots, loaded]);
 
   useEffect(() => {
     if (!playing) return;
@@ -1641,23 +2039,24 @@ export default function FarMeDashboard() {
     return () => clearInterval(t);
   }, [playing]);
 
-  // the signed-in user
-  // todo(backend): GET /me through getUser() in the api file. needs { username, firstName, lastName, role?, avatarUrl? }. username is the greeting.
-  const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); // empty until getUser answers, so no placeholder name shows
+  
+  const [user, setUser] = useState({ username: "", firstName: "", lastName: "" }); 
+  const [flow, setFlow] = useState(null);
   useEffect(() => {
-    getUser().then(setUser);
+    getUser()
+      .then(setUser)
+      .catch((error) => console.error("Failed to load the signed-in user:", error));
   }, []);
 
-  // slot = the slot being viewed, flowSlot = the one in the add-slot modals
+  
   const slot = slots.find((s) => s.id === openId) || null;
   const flowSlot = flow ? slots.find((s) => s.id === flow.id) || null : null;
-  // weather is only needed when a slot is open (or in its modal), not on the main dashboard
   const wxSlot = flowSlot || slot || null;
   const wx = useWeather(wxSlot?.lat, wxSlot?.lon);
   const season = seasonNow();
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
-  // grid size, planted squares (by row-col), and the selected square's plant
+  
   const grid = useMemo(
     () => (slot ? computeGrid(slot.widthM, slot.lengthM) : null),
     [slot?.widthM, slot?.lengthM],
@@ -1672,9 +2071,8 @@ export default function FarMeDashboard() {
   const brushCrop = cropByKey(brush);
   const carryPlants = slot ? slot.plants.filter((p) => carry.includes(p.id)) : [];
   const pickedPlants = slot ? slot.plants.filter((p) => picked.includes(p.id)) : [];
-  // only plants that are ready today can be harvested (not ones that are only ready in the growth preview)
   const readyPlants = slot
-    ? slot.plants.filter((p) => getStage(p, cropByKey(p.cropKey), todayIso()) === "ready")
+    ? slot.plants.filter((p) => getStage(p, cropByKey(p.cropKey), todayIso(), slot.soil) === "ready")
     : [];
   const pickedReady = pickedPlants.filter((p) => readyPlants.some((r) => r.id === p.id));
   const clearTrowel = () => {
@@ -1682,13 +2080,13 @@ export default function FarMeDashboard() {
     setPicked([]);
   };
 
-  // the trowel message fades by itself
+ 
   useEffect(() => {
     if (!toolMsg) return;
     const t = setTimeout(() => setToolMsg(""), 4000);
     return () => clearTimeout(t);
   }, [toolMsg]);
-  // esc: put the plants back first, then clear the selection, then put the trowel away
+  
   useEffect(() => {
     if (!tool) return;
     const onKey = (e) => {
@@ -1706,20 +2104,101 @@ export default function FarMeDashboard() {
     let name = base;
     let n = 2;
     while (slots.some((s) => s.name.toLowerCase() === name.toLowerCase()))
-      name = `${base} (${n++})`;
+      name = withSuffix(base, n++);
     return name;
   };
 
-  // step 1 -> step 2: save the new slot and show the success modal
-  // todo(backend): POST /slots
-  const createSlot = (data) => {
-    const id = crypto.randomUUID();
-    setSlots((all) => [...all, { id, ...data, name: uniqueName(data.name), plants: [] }]);
-    setShowAdd(false);
-    setFlow({ step: "success", id });
+
+  const renameSlot = editingId ? slots.find((x) => x.id === editingId) : null;
+  const renameChanged =
+    !!renameSlot && renameText.trim() !== "" && renameText.trim() !== renameSlot.name;
+  const focusRename = () =>
+    setTimeout(() => document.getElementById(`rename-${editingId}`)?.focus(), 0);
+  const startRename = (s) => {
+    askingRef.current = false;
+    setRenameAsk(null);
+    setRenameText(s.name);
+    setEditingId(s.id);
+  };
+  const endRename = () => {
+    askingRef.current = false;
+    setRenameAsk(null);
+    setEditingId(null);
+  };
+  const askRename = (kind) => {
+    askingRef.current = true;
+    setRenameAsk(kind);
+  };
+  const keepEditing = () => {
+    askingRef.current = false;
+    setRenameAsk(null);
+    focusRename();
+  };
+  const onRenameChange = (e) => {
+    const { value, hit } = checkName(e.target.value);
+    setRenameText(value);
+    if (hit) {
+      askingRef.current = true;
+      setRenameLimit(hit);
+    }
+  };
+  const closeRenameLimit = () => {
+    askingRef.current = false;
+    setRenameLimit(null);
+    focusRename();
+  };
+  const saveRename = async () => {
+    const s = renameSlot;
+    if (!s || renameBusy) return;
+    const base = renameText.trim();
+    let name = base;
+    let n = 2;
+    while (slots.some((x) => x.id !== s.id && x.name.toLowerCase() === name.toLowerCase()))
+      name = withSuffix(base, n++);
+    setRenameBusy(true);
+    try {
+      await updateSlotAPI(s.id, {
+        name,
+        soil: s.soil,
+        widthM: s.widthM,
+        lengthM: s.lengthM,
+        location: s.location,
+        ...(s.lat != null ? { lat: s.lat } : {}),
+        ...(s.lon != null ? { lon: s.lon } : {}),
+        ...(s.place != null ? { place: s.place } : {}),
+      });
+      setSlots(await getSlots());
+      endRename();
+      setUpdated({ name });
+    } catch (error) {
+      console.error("Failed to rename slot:", error);
+      showError(error, "Unable to rename slot. Please try again.", "Couldn’t rename the slot");
+    } finally {
+      setRenameBusy(false);
+    }
   };
 
-  // open a slot's grid and reset the selection + growth preview
+  
+  const createSlot = async (data) => {
+    try {
+      const slotData = {
+        ...data,
+        name: uniqueName(data.name),
+      };
+
+      const savedSlot = await createSlotAPI(slotData);
+
+      setSlots((all) => [...all, savedSlot]);
+      setShowAdd(false);
+      setFlow({ step: "success", id: savedSlot.id });
+    } catch (error) {
+      console.error("Failed to create slot:", error);
+      showError(error, "Unable to create slot. Please try again.", "Couldn’t create the slot");
+    }
+  };
+
+
+ 
   const openSlot = (id) => {
     setOpenId(id);
     setSelected(null);
@@ -1729,7 +2208,7 @@ export default function FarMeDashboard() {
     setPlaying(false);
   };
 
-  // 'plant this crop' in the detail modal: select that crop and go to the grid
+  
   const pickRecommended = (key) => {
     setBrush(key);
     openSlot(flow.id);
@@ -1741,69 +2220,169 @@ export default function FarMeDashboard() {
     setFlow(null);
   };
 
-  // click / enter on a square. with the trowel: pick up, move or harvest. otherwise plant the crop i picked if it's empty, or just select it.
-  // todo(backend): POST /slots/:id/plants
-  const activateCell = (cell) => {
+  const activateCell = async (cell) => {
     setSelected(cell);
+
     if (!slot) return;
+
     const here = plantMap.get(`${cell.row}-${cell.col}`);
+
     if (tool === "trowel") return trowelClick(cell, here);
-    if (!brush || here) return;
-    updateSlot(slot.id, (s) => ({
-      ...s,
-      plants: [
-        ...s.plants,
-        { id: crypto.randomUUID(), row: cell.row, col: cell.col, cropKey: brush, plantedOn },
-      ],
-    }));
+    if (!brush) return;
+    if (here) {
+      return setNotice({
+        title: "That square is taken",
+        lines: ["Something is already planted there.", "Pick another square, or use the trowel to move it."],
+      });
+    }
+    if (soilFit(cropByKey(brush), slot.soil) === "poor" && !readMuted(SOIL_WARN_KEY).includes(brush))
+      return setSoilWarn({ cell, mute: false });
+    return checkSpacing(cell);
   };
 
-  // the trowel works like a gallery: click plants to select or unselect them, as many as you like.
-  // then move them together, harvest the ready ones, or throw them away (buttons in the side panel)
+  const checkSpacing = (cell) => {
+    const issue = spacingIssue(slot, grid.size, brush, cell, plantedOn);
+    if (issue && !readMuted(SPACE_WARN_KEY).includes(brush)) return setSpaceWarn({ cell, mute: false, ...issue });
+    return plantAt(cell);
+  };
+
+  const plantAt = async (cell) => {
+    const cellKey = `${slot.id}-${cell.row}-${cell.col}`;
+    if (plantingCellsRef.current.has(cellKey)) return;
+    plantingCellsRef.current.add(cellKey);
+
+    const targetSlotId = slot.id;
+    const cropKey = brush;
+    const plantingDate = plantedOn;
+
+    const temporaryId = `pending-${targetSlotId}-${cell.row}-${cell.col}-${Date.now()}`;
+    const temporaryPlant = {
+      id: temporaryId,
+      row: cell.row,
+      col: cell.col,
+      cropKey,
+      plantedOn: plantingDate,
+      pendingSave: true,
+    };
+
+    updateSlot(targetSlotId, (s) => ({
+      ...s,
+      plants: [...s.plants, temporaryPlant],
+    }));
+    sfx.plant();
+
+    try {
+      const newPlant = await createPlantAPI(targetSlotId, {
+        row: cell.row,
+        col: cell.col,
+        cropKey,
+        plantedOn: plantingDate,
+      });
+
+      updateSlot(targetSlotId, (s) => ({
+        ...s,
+        plants: s.plants.map((p) =>
+          p.id === temporaryId ? newPlant : p
+        ),
+      }));
+    } catch (error) {
+      console.error(`Failed to plant crop at ${cell.row}, ${cell.col}:`, error);
+
+      updateSlot(targetSlotId, (s) => ({
+        ...s,
+        plants: s.plants.filter((p) => p.id !== temporaryId),
+      }));
+
+      showError(error, "Unable to plant crop. Please try again.", "Couldn’t plant that");
+    } finally {
+      plantingCellsRef.current.delete(cellKey);
+    }
+  };
+
+
   const trowelClick = (cell, here) => {
     if (carryPlants.length) return placeGroup(cell);
+    if (!here && pickedPlants.length) return placeGroup(cell, pickedPlants);
     if (!here) return;
+    if (!picked.includes(here.id)) sfx.pickup();
     setPicked((ids) =>
       ids.includes(here.id) ? ids.filter((id) => id !== here.id) : [...ids, here.id],
     );
     setToolMsg("");
   };
-  // put the plants on the trowel down. the first one (top left) lands on the square i click and the rest keep their layout around it
-  // todo(backend): PATCH /plants/:id { row, col } for every plant that moved
-  const placeGroup = (cell) => {
-    const group = [...carryPlants].sort((a, b) => a.row - b.row || a.col - b.col);
-    const dr = cell.row - group[0].row;
-    const dc = cell.col - group[0].col;
-    if (dr === 0 && dc === 0) {
-      setCarry([]); // clicked the square it came from: put back
+
+  const placeGroup = async (cell, plants = carryPlants) => {
+    const group = [...plants].sort(
+      (a, b) => a.row - b.row || a.col - b.col
+    );
+
+    if (!group.length) return;
+
+    const rank = (values) => new Map([...new Set(values)].sort((a, b) => a - b).map((v, i) => [v, i]));
+    const rowRank = rank(group.map((p) => p.row));
+    const colRank = rank(group.map((p) => p.col));
+    const target = (p) => ({
+      row: cell.row + rowRank.get(p.row) - rowRank.get(group[0].row),
+      col: cell.col + colRank.get(p.col) - colRank.get(group[0].col),
+    });
+
+    
+    if (group.every((p) => target(p).row === p.row && target(p).col === p.col)) {
+      setCarry([]);
       return setToolMsg("Put back where they were.");
     }
+
     const ids = new Set(group.map((p) => p.id));
-    const fits = group.every((p) => {
-      const r = p.row + dr;
-      const c = p.col + dc;
-      if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) return false; // outside the plot
+
+    let taken = 0;
+    let outside = 0;
+    group.forEach((p) => {
+      const { row: r, col: c } = target(p);
+      if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) {
+        outside++;
+        return;
+      }
       const other = plantMap.get(`${r}-${c}`);
-      return !other || ids.has(other.id); // empty, or a square one of them is leaving
+      if (other && !ids.has(other.id)) taken++;
     });
-    if (!fits) {
-      return setToolMsg(
-        "They don't fit there. Some squares are taken or outside the plot, so try another spot.",
-      );
+
+    if (taken || outside) {
+      return setBlocked({ taken, outside });
     }
-    updateSlot(slot.id, (s) => ({
-      ...s,
-      plants: s.plants.map((p) => (ids.has(p.id) ? { ...p, row: p.row + dr, col: p.col + dc } : p)),
-    }));
+
+    if (group.some((p) => p.pendingSave)) {
+      return setToolMsg("Still saving a plant. Try again in a second.");
+    }
+
+    const slotId = slot.id;
+    const moves = group.map((p) => ({ id: p.id, ...target(p) }));
+    const before = new Map(group.map((p) => [p.id, { row: p.row, col: p.col }]));
+    const apply = (positions) =>
+      updateSlot(slotId, (s) => ({
+        ...s,
+        plants: s.plants.map((p) => (positions.has(p.id) ? { ...p, ...positions.get(p.id) } : p)),
+      }));
+
+    apply(new Map(moves.map((m) => [m.id, { row: m.row, col: m.col }])));
     setCarry([]);
+    setPicked([]);
+    sfx.place();
     setToolMsg(
       group.length === 1
         ? `Moved ${cropByKey(group[0].cropKey).name}.`
-        : `Moved ${group.length} plants together.`,
+        : `Moved ${group.length} plants together.`
     );
+
+    try {
+      await movePlantsAPI(slotId, moves.map(({ id, row, col }) => ({ id, row, col })));
+    } catch (error) {
+      console.error("Failed to move plants:", error);
+      apply(before);
+      setToolMsg("");
+      showError(error, "Unable to move plants. Please try again.", "Couldn’t move the plants");
+    }
   };
-  // drag-select: a plain drag starts a new selection with the plants inside the box (an empty box clears it).
-  // holding shift / ctrl / cmd adds the plants to the selection i already have.
+
   const selectBox = (a, b, add) => {
     const r1 = Math.min(a.row, b.row);
     const r2 = Math.max(a.row, b.row);
@@ -1827,82 +2406,146 @@ export default function FarMeDashboard() {
     setToolMsg("");
   };
 
-  // todo(backend): DELETE /plants/:id for each one
-  const removePlants = (ids) => {
-    updateSlot(slot.id, (s) => ({ ...s, plants: s.plants.filter((p) => !ids.includes(p.id)) }));
+  const removePlants = async (ids) => {
+    const slotId = slot.id;
+    const removed = slot.plants.filter((p) => ids.includes(p.id));
+
+    updateSlot(slotId, (s) => ({
+      ...s,
+      plants: s.plants.filter((p) => !ids.includes(p.id)),
+    }));
     setCarry((c) => c.filter((id) => !ids.includes(id)));
     setPicked((c) => c.filter((id) => !ids.includes(id)));
+    sfx.remove();
+
+    const results = await Promise.allSettled(ids.map((id) => deletePlantAPI(id)));
+    const failedIds = ids.filter((_, i) => results[i].status === "rejected");
+    if (!failedIds.length) return;
+
+    const failed = removed.filter((p) => failedIds.includes(p.id));
+    updateSlot(slotId, (s) => ({ ...s, plants: [...s.plants, ...failed] }));
+    const firstError = results.find((r) => r.status === "rejected")?.reason;
+    console.error("Failed to remove plants:", firstError);
+    showError(firstError, "Unable to remove plants. Please try again.", "Couldn’t remove the plants");
   };
-  // the harvest dialog: keep = log the harvest and the plants grow again (planting date becomes today), remove = log it and free the squares
-  // todo(backend): POST /slots/:id/harvests { plantId, at, amount, kept } for each plant, then PATCH or DELETE it
-  const harvestPlants = ({ action, amount }) => {
+
+  const harvestPlants = async ({ action, amount }) => {
     const group = slot.plants.filter((x) => harvesting.includes(x.id));
-    setHarvesting(null);
-    if (!group.length) return;
+
+    if (!group.length) {
+      setHarvesting(null);
+      return;
+    }
+
     const keep = action === "keep";
     const date = todayIso();
     const ids = new Set(group.map((p) => p.id));
-    updateSlot(slot.id, (s) => ({
-      ...s,
-      harvests: [
-        ...group.map((p) => ({
-          id: crypto.randomUUID(),
-          cropKey: p.cropKey,
-          row: p.row,
-          col: p.col,
-          plantedOn: p.plantedOn,
-          date,
-          amount,
-          kept: keep,
-        })),
-        ...(s.harvests || []),
-      ],
-      plants: keep
-        ? s.plants.map((x) => (ids.has(x.id) ? { ...x, plantedOn: date, lastHarvested: date } : x))
-        : s.plants.filter((x) => !ids.has(x.id)),
-    }));
-    setPicked((c) => c.filter((id) => !ids.has(id)));
-    const what = group.length === 1 ? cropByKey(group[0].cropKey).name : `${group.length} plants`;
-    setToolMsg(
-      keep
-        ? `Harvested ${what}. ${group.length === 1 ? "It starts" : "They start"} growing again.`
-        : `Harvested ${what}. The ${group.length === 1 ? "square is" : "squares are"} free.`,
-    );
+
+    try {
+
+      const newHarvests = await Promise.all(
+        group.map((p) =>
+          createHarvestAPI(slot.id, {
+            cropKey: p.cropKey,
+            row: p.row,
+            col: p.col,
+            plantedOn: p.plantedOn,
+            date,
+            amount: amount?.trim() || "Not specified",
+            kept: keep,
+          })
+        )
+      );
+
+      if (keep) {
+        await Promise.all(
+          group.map((p) =>
+            updatePlantAPI(p.id, {
+              plantedOn: date,
+              lastHarvested: date,
+            })
+          )
+        );
+      } else {
+        await Promise.all(group.map((p) => deletePlantAPI(p.id)));
+      }
+
+      updateSlot(slot.id, (s) => ({
+        ...s,
+        harvests: [...newHarvests, ...(s.harvests || [])],
+        plants: keep
+          ? s.plants.map((x) =>
+              ids.has(x.id)
+                ? { ...x, plantedOn: date, lastHarvested: date }
+                : x
+            )
+          : s.plants.filter((x) => !ids.has(x.id)),
+      }));
+
+      setPicked((c) => c.filter((id) => !ids.has(id)));
+      setHarvesting(null);
+      sfx.harvest();
+
+      const what =
+        group.length === 1
+          ? cropByKey(group[0].cropKey).name
+          : `${group.length} plants`;
+
+      setToolMsg(
+        keep
+          ? `Harvested ${what}. ${
+              group.length === 1 ? "It starts" : "They start"
+            } growing again.`
+          : `Harvested ${what}. The ${
+              group.length === 1 ? "square is" : "squares are"
+            } free.`
+      );
+    } catch (error) {
+      console.error("Failed to harvest plants:", error);
+      showError(error, "Unable to harvest plants. Please try again.", "Couldn’t harvest");
+    }
   };
 
-  // todo(backend): DELETE /slots/:id
-  const doDelete = () => {
-    setSlots((all) => all.filter((s) => s.id !== toDelete.id));
-    if (openId === toDelete.id) setOpenId(null);
-    setToDelete(null);
+  const doDelete = async () => {
+    if (!toDelete) return;
+
+    try {
+      await deleteSlotAPI(toDelete.id);
+
+      setSlots((all) => all.filter((s) => s.id !== toDelete.id));
+
+      if (openId === toDelete.id) {
+        setOpenId(null);
+      }
+
+      setToDelete(null);
+    } catch (error) {
+      console.error("Failed to delete slot:", error);
+      showError(error, "Unable to delete slot. Please try again.", "Couldn’t delete the slot");
+    }
   };
 
   const counts = slot
     ? slot.plants.reduce((m, p) => ({ ...m, [p.cropKey]: (m[p.cropKey] || 0) + 1 }), {})
     : {};
 
-  // notifications for the bell (see buildNotifications near the top of this file).
-  // "now" ticks every minute so the watering reminders change as the time of day changes.
+ 
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(t);
   }, []);
-  // read / deleted marks, loaded and saved through the api file
-  // todo(backend): keep these marks per user (see db.loadNotifState in farmeApi.js)
+ 
   const [nstate, setNstate] = useState({ read: {}, deleted: {} });
   const [nLoaded, setNLoaded] = useState(false);
   useEffect(() => {
-    db.loadNotifState().then((st) => {
-      setNstate(st);
-      setNLoaded(true);
-    });
+    getNotificationStates()
+      .then(setNstate)
+      .catch((error) => console.error("Failed to load notification marks:", error))
+      .finally(() => setNLoaded(true));
   }, []);
-  useEffect(() => {
-    if (nLoaded) db.saveNotifState(nstate);
-  }, [nstate, nLoaded]);
   const allNotifs = useMemo(() => buildNotifications(slots, now), [slots, now]);
-  // drop the marks of notifications that no longer exist, so the saved list doesn't grow forever
+  
   useEffect(() => {
     if (!loaded || !nLoaded) return;
     const ids = new Set(allNotifs.map((n) => n.id));
@@ -1919,35 +2562,83 @@ export default function FarMeDashboard() {
   const notifs = allNotifs
     .filter((n) => !nstate.deleted[n.id])
     .map((n) => ({ ...n, read: !!nstate.read[n.id] }));
-  // todo(backend): read / delete should also call the notifications api (PATCH / DELETE /notifications/:id)
-  const markRead = (id) => setNstate((st) => ({ ...st, read: { ...st.read, [id]: true } }));
-  const markAllRead = () =>
+ 
+  const saveMarks = (requests) =>
+    Promise.all(requests).catch((error) => {
+      console.error("Failed to save the notification change:", error);
+      getNotificationStates().then(setNstate).catch(() => {});
+    });
+  const markRead = (id) => {
+    setNstate((st) => ({ ...st, read: { ...st.read, [id]: true } }));
+    saveMarks([markNotificationRead(id)]);
+  };
+  const markAllRead = () => {
+    const ids = notifs.filter((n) => !n.read).map((n) => n.id);
+    if (!ids.length) return;
     setNstate((st) => ({
       ...st,
-      read: { ...st.read, ...Object.fromEntries(notifs.map((n) => [n.id, true])) },
+      read: { ...st.read, ...Object.fromEntries(ids.map((id) => [id, true])) },
     }));
-  const deleteNotif = (id) =>
+    saveMarks(ids.map((id) => markNotificationRead(id)));
+  };
+  const deleteNotif = (id) => {
     setNstate((st) => ({ ...st, deleted: { ...st.deleted, [id]: true } }));
-  const deleteAllNotifs = () =>
+    saveMarks([deleteNotificationAPI(id)]);
+  };
+  const deleteAllNotifs = () => {
+    const ids = notifs.map((n) => n.id);
+    if (!ids.length) return;
     setNstate((st) => ({
       ...st,
-      deleted: { ...st.deleted, ...Object.fromEntries(notifs.map((n) => [n.id, true])) },
+      deleted: { ...st.deleted, ...Object.fromEntries(ids.map((id) => [id, true])) },
     }));
-  // "water plants": remember when this slot was last watered (saved with the slot)
-  // todo(backend): PATCH /slots/:id { lastWatered } and POST /slots/:id/waterings (logWatering is the placeholder)
-  const waterSlot = () => {
-    const at = Date.now();
-    updateSlot(slot.id, (s) => ({ ...s, lastWatered: at }));
-    logWatering(slot.id, at);
+    saveMarks(ids.map((id) => deleteNotificationAPI(id)));
   };
 
-  // edit slot: the form hands over the new values, i list what changed and ask before saving
-  // todo(backend): re-check the new size / name on the server too
+  const saveWatering = async (plantIds) => {
+    if (!slot?.id || wateringRef.current) return;
+    wateringRef.current = true;
+
+    const slotId = slot.id;
+    const at = Date.now();
+    const only = plantIds ? new Set(plantIds) : null;
+    const before = new Map(slot.plants.map((p) => [p.id, p.lastWatered]));
+    const beforeSlot = slot.lastWatered;
+
+    updateSlot(slotId, (s) => ({
+      ...s,
+      lastWatered: at,
+      plants: s.plants.map((p) => (!only || only.has(p.id) ? { ...p, lastWatered: at } : p)),
+    }));
+    sfx.water();
+
+    try {
+      await logWatering(slotId, at, plantIds);
+    } catch (error) {
+      console.error("Failed to record watering:", error);
+      updateSlot(slotId, (s) => ({
+        ...s,
+        lastWatered: beforeSlot,
+        plants: s.plants.map((p) => (before.has(p.id) ? { ...p, lastWatered: before.get(p.id) } : p)),
+      }));
+      showError(error, "Unable to record watering. Please try again.", "Couldn’t record watering");
+    } finally {
+      wateringRef.current = false;
+    }
+  };
+
+  const waterSlot = () => saveWatering();
+
+  const waterPlant = (plant) => {
+    if (!plant?.id || plant.pendingSave) return;
+    return saveWatering([plant.id]);
+  };
+
   const requestEdit = (data) => {
     let name = data.name;
     let n = 2;
     while (slots.some((x) => x.id !== slot.id && x.name.toLowerCase() === name.toLowerCase()))
-      name = `${data.name} (${n++})`;
+      name = withSuffix(data.name, n++);
     const next = { ...data, name };
     const changes = [];
     if (next.name !== slot.name) changes.push(`Name: ${slot.name} → ${next.name}`);
@@ -1962,8 +2653,7 @@ export default function FarMeDashboard() {
     )
       changes.push(`Location: ${slot.place || slot.location} → ${next.place || next.location}`);
     if (next.soil !== slot.soil) changes.push(`Soil: ${slot.soil} → ${next.soil}`);
-    if (changes.length === 0) return setShowEdit(false); // nothing changed, so there's nothing to confirm
-    // a smaller plot can leave planted squares outside the new grid
+    if (changes.length === 0) return setShowEdit(false); 
     const oldGrid = computeGrid(slot.widthM, slot.lengthM);
     const newGrid = computeGrid(next.widthM, next.lengthM);
     const lost = slot.plants.filter((p) => p.row >= newGrid.rows || p.col >= newGrid.cols).length;
@@ -1975,21 +2665,58 @@ export default function FarMeDashboard() {
       );
     setPendingEdit({ data: next, changes, warn: lost > 0 });
   };
-  // todo(backend): PATCH /slots/:id, and delete the plants that fell outside the new size
-  const applyEdit = () => {
+  
+  const applyEdit = async () => {
+    if (!pendingEdit || !slot) return;
+
     const { data } = pendingEdit;
     const g = computeGrid(data.widthM, data.lengthM);
-    updateSlot(slot.id, (s) => ({
-      ...s,
-      ...data,
-      plants: s.plants.filter((p) => p.row < g.rows && p.col < g.cols),
-    }));
-    setSelected(null);
-    setPendingEdit(null);
-    setShowEdit(false);
+
+    const removedPlants = slot.plants.filter(
+      (p) => p.row >= g.rows || p.col >= g.cols
+    );
+
+    const updates = {
+      name: data.name,
+      soil: data.soil,
+      widthM: data.widthM,
+      lengthM: data.lengthM,
+      location: data.location,
+      ...(data.lat != null ? { lat: data.lat } : {}),
+      ...(data.lon != null ? { lon: data.lon } : {}),
+      ...(data.place != null ? { place: data.place } : {}),
+    };
+
+    try {
+      await updateSlotAPI(slot.id, updates);
+
+      await Promise.all(
+        removedPlants.map((plant) => deletePlantAPI(plant.id))
+      );
+
+      const refreshedSlots = await getSlots();
+      setSlots(refreshedSlots);
+
+      setSelected(null);
+      setPendingEdit(null);
+      setShowEdit(false);
+
+      setUpdated({ name: data.name });
+    } catch (error) {
+      console.error("Failed to update slot:", error);
+
+      try {
+        const refreshedSlots = await getSlots();
+        setSlots(refreshedSlots);
+      } catch (refreshError) {
+        console.error("Failed to refresh slots:", refreshError);
+      }
+
+      showError(error, "Unable to update slot. Please try again.", "Couldn’t update the slot");
+    }
   };
 
-  // deleting a plant or notification(s) always asks first (see confirmInfo + runConfirm)
+  
   const confirmPlants =
     confirm?.type === "plant" && slot ? slot.plants.filter((p) => confirm.ids.includes(p.id)) : [];
   const confirmInfo =
@@ -2025,23 +2752,18 @@ export default function FarMeDashboard() {
     setConfirm(null);
   };
 
-  // what the chatbot knows: the open slot (if any), the season and the weather
-  const chatContext = {
+  const chat = buildChatContext({
     page: "dashboard",
     season: season.key,
-    slot: slot && {
-      name: slot.name,
-      soil: slot.soil,
-      location: slot.place || slot.location,
-      areaM2: Math.round(slot.widthM * slot.lengthM),
-      weather: wx.data,
-      planted: counts,
-    },
-  };
+    slot,
+    slots,
+    weather: wx.data,
+    now,
+  });
 
   const emptyState = (
     <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 py-10">
-      {/* empty state image: i crop it because the png has blank space around the drawing. change w / ratio to resize, and the 40% to move the crop */}
+      {}
       <Img
         src={dashboardEmpty}
         alt=""
@@ -2090,6 +2812,7 @@ export default function FarMeDashboard() {
           </h1>
           <ReminderBell
             notifs={notifs}
+            loading={!loaded || !nLoaded}
             onRead={markRead}
             onReadAll={markAllRead}
             onDelete={(id) => setConfirm({ type: "notif", id })}
@@ -2119,12 +2842,22 @@ export default function FarMeDashboard() {
                   className="order-3 basis-full text-sm text-right -mt-2 sm:mt-0 sm:order-none sm:basis-auto"
                   aria-live="polite"
                 >
+                  {slot.plants.length > 0 && (
+                    <p className="font-bold">
+                      {(() => {
+                        const c = wateringCounts(slot, now);
+                        return c.needWater === 0
+                          ? "No plants need water right now"
+                          : `${c.needWater} of ${c.total} plant${c.total === 1 ? "" : "s"} need water`;
+                      })()}
+                    </p>
+                  )}
                   <p className="font-bold">
                     {slot.lastWatered
                       ? `Last watered: ${wateredToday(slot, now) ? "today" : new Date(slot.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })}, ${new Date(slot.lastWatered).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
                       : "Not watered yet"}
                   </p>
-                  {slot.plants.length > 0 && !wateredToday(slot, now) && waterPhase(now) && (
+                  {slot.plants.length > 0 && slotNeedsWater(slot, now) && waterPhase(now) && (
                     <p className={WATER_COPY[waterPhase(now)].good ? "" : "fm-error"}>
                       {WATER_COPY[waterPhase(now)].good
                         ? "Good time to water."
@@ -2155,8 +2888,31 @@ export default function FarMeDashboard() {
             )}
           </div>
 
-          {!slot && slots.length === 0 && emptyState}
-          {!slot && slots.length > 0 && (
+          {!slot && !ready && slow && (
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}
+              aria-busy="true"
+            >
+              <span className="sr-only">Loading your fields</span>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  aria-hidden="true"
+                  className="bg-white border-[3px] border-[#202808] rounded-xl overflow-hidden"
+                >
+                  <span className="fm-bone fm-bone--thumb" />
+                  <div className="p-3 flex flex-col gap-2">
+                    <span className="fm-bone fm-bone--title" />
+                    <span className="fm-bone fm-bone--line" />
+                    <span className="fm-bone fm-bone--line" style={{ width: "55%" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!slot && ready && slots.length === 0 && emptyState}
+          {!slot && ready && slots.length > 0 && (
             <div
               className="grid gap-4"
               style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}
@@ -2181,16 +2937,27 @@ export default function FarMeDashboard() {
                       <div className="flex items-center gap-2">
                         {editingId === s.id ? (
                           <input
+                            id={`rename-${s.id}`}
                             autoFocus
-                            defaultValue={s.name}
+                            value={renameText}
+                            onChange={onRenameChange}
                             aria-label="Slot name"
                             className={`flex-1 min-w-0 border-[3px] border-[#202808] rounded-lg px-2 py-1`}
-                            onBlur={(e) => {
-                              const v = e.target.value.trim();
-                              updateSlot(s.id, (x) => ({ ...x, name: v || x.name }));
-                              setEditingId(null);
+                            onBlur={() => {
+                              if (askingRef.current) return; 
+                              if (!renameChanged) return endRename();
+                              askRename("leave");
                             }}
-                            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (!renameChanged) return endRename();
+                                askRename("save");
+                              } else if (e.key === "Escape") {
+                                if (!renameChanged) return endRename();
+                                askRename("leave");
+                              }
+                            }}
                           />
                         ) : (
                           <>
@@ -2198,7 +2965,7 @@ export default function FarMeDashboard() {
                               {s.name}
                             </span>
                             <button
-                              onClick={() => setEditingId(s.id)}
+                              onClick={() => startRename(s)}
                               aria-label={`Rename ${s.name}`}
                               className={`w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#DEC59E]`}
                             >
@@ -2338,6 +3105,8 @@ export default function FarMeDashboard() {
                     grid={grid}
                     plantMap={plantMap}
                     asOf={asOf}
+                    soil={slot?.soil}
+                    now={now}
                     selected={selected}
                     onSelect={setSelected}
                     onActivate={activateCell}
@@ -2345,10 +3114,11 @@ export default function FarMeDashboard() {
                     tool={tool}
                     carry={carryPlants}
                     picked={picked}
+                    brush={brush}
                   />
                 </div>
                 <div className={`fm-panel p-4`} style={{ flex: "1 1 220px" }} aria-live="polite">
-                  {/* the trowel: select plants like in a gallery, then move, harvest or throw them away together */}
+                  {}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
                     <button
                       onClick={toggleTrowel}
@@ -2429,9 +3199,9 @@ export default function FarMeDashboard() {
                     <p className="text-sm font-bold mb-3">
                       {toolMsg ||
                         (carryPlants.length > 0
-                          ? `${carryPlants.length} plant${carryPlants.length === 1 ? " is" : "s are"} on the trowel. Click a square to put ${carryPlants.length === 1 ? "it" : "them"} down. The top left plant lands where you click.`
+                          ? `${carryPlants.length} plant${carryPlants.length === 1 ? " is" : "s are"} on the trowel. Click a square to put ${carryPlants.length === 1 ? "it" : "them"} down. The top left plant lands where you click, and empty gaps between them are squeezed out.`
                           : picked.length > 0
-                            ? `${picked.length} selected. Drag again for a new selection, hold Shift to add, or click a plant to add or remove it.${pickedReady.length < picked.length ? " Only ready plants can be harvested." : ""}`
+                            ? `${picked.length} selected. Drag again for a new selection, hold Shift to add, or click a plant to add or remove it. Click an empty square to move them there.${pickedReady.length < picked.length ? " Only ready plants can be harvested." : ""}`
                             : "Drag across the grid to select a group, or click plants one by one. Then move, harvest or throw them away.")}
                     </p>
                   )}
@@ -2458,12 +3228,40 @@ export default function FarMeDashboard() {
                         {selCrop.emoji} {selCrop.name}{" "}
                         <span className="text-sm font-normal">({selCrop.en})</span>
                       </h3>
-                      <p>Stage: {STAGES[getStage(selPlant, selCrop, asOf)].label}</p>
+                      <p>Stage: {STAGES[getStage(selPlant, selCrop, asOf, slot?.soil)].label}</p>
                       <p>Planted: {selPlant.plantedOn}</p>
                       {selPlant.lastHarvested && <p>Last harvested: {selPlant.lastHarvested}</p>}
-                      <p className="mb-3">
-                        Harvest around: {addDays(selPlant.plantedOn, selCrop.maturity)}
+                      <p className="font-bold flex items-center gap-1">
+                        <Droplets size={14} aria-hidden="true" />
+                        {!selPlant.lastWatered
+                          ? "Not watered yet \u2013 needs water"
+                          : plantOverdue(selPlant, now)
+                            ? `Overdue by ${daysOverdue(selPlant, now)} day${daysOverdue(selPlant, now) === 1 ? "" : "s"} (last: ${new Date(selPlant.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })})`
+                            : plantNeedsWater(selPlant, now)
+                            ? `Needs water (last: ${new Date(selPlant.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })})`
+                            : plantWateredToday(selPlant, now)
+                              ? `Watered today, ${new Date(selPlant.lastWatered).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                              : `Doesn't need water yet (last: ${new Date(selPlant.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })})`}
                       </p>
+                      <p className="mb-3">
+                        Harvest around: {addDays(selPlant.plantedOn, effectiveMaturity(selCrop, slot?.soil))}
+                      </p>
+                      <p className="text-sm">
+                        Needs water every {wateringInterval(selPlant)} day{wateringInterval(selPlant) === 1 ? "" : "s"}
+                        {plantNeedsWater(selPlant, now)
+                          ? plantOverdue(selPlant, now)
+                            ? ` \u2013 overdue by ${daysOverdue(selPlant, now)} day${daysOverdue(selPlant, now) === 1 ? "" : "s"}`
+                            : " \u2013 due today"
+                          : ` \u2013 next in ${daysUntilWatering(selPlant, now)} day${daysUntilWatering(selPlant, now) === 1 ? "" : "s"}`}
+                      </p>
+                      {plantNeedsWater(selPlant, now) && (
+                        <button
+                          onClick={() => waterPlant(selPlant)}
+                          className="fm-btn fm-btn--primary flex items-center gap-2 mb-3"
+                        >
+                          <Droplets size={16} /> Water this plant
+                        </button>
+                      )}
                       <p className="text-sm">Use the trowel to move or harvest this plant.</p>
                     </>
                   )}
@@ -2493,20 +3291,52 @@ export default function FarMeDashboard() {
                 />
               </div>
 
-              <div className="flex flex-wrap gap-4 text-sm">
-                <span className="inline-flex items-center gap-2">
-                  <span className={`w-4 h-4 rounded border-2 border-[#8E5A45] bg-[#C4866D]`} />
-                  Empty square
-                </span>
-                {Object.entries(STAGES).map(([k, v]) => (
-                  <span key={k} className="inline-flex items-center gap-2">
-                    <span
-                      className={`w-4 h-4 rounded border-2 border-[#202808]`}
-                      style={{ background: v.color }}
-                    />
-                    {v.label}
-                  </span>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-bold">Jump to:</span>
+                {[30, 90, 180, 365, 540, 730, 1095, 1460].map((days) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() => {
+                      setPlaying(false);
+                      setPreview(days);
+                    }}
+                    aria-pressed={preview === days}
+                    className={`fm-btn ${preview === days ? "fm-btn--primary" : "fm-btn--light"} !min-h-[34px] !px-3 !text-xs`}
+                  >
+                    {days === 365 ? "1 year" : days === 540 ? "18 months" : days === 730 ? "2 years" : days === 1095 ? "3 years" : days === 1460 ? "4 years" : `${days} days`}
+                  </button>
                 ))}
+              </div>
+
+              <div className="flex flex-col gap-2 text-sm">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <span className="font-bold">Watering Status:</span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-[#202808] bg-[#4A90C2]" />
+                    Water today
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-[#202808] bg-[#C0392B]" />
+                    Overdue
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <span className="font-bold">Crop Stage:</span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 rounded border-2 border-[#8E5A45] bg-[#C4866D]" />
+                    Empty square
+                  </span>
+                  {Object.entries(STAGES).map(([k, v]) => (
+                    <span key={k} className="inline-flex items-center gap-2">
+                      <span
+                        className="w-4 h-4 rounded border-2 border-[#202808]"
+                        style={{ background: v.color }}
+                      />
+                      {v.label}
+                    </span>
+                  ))}
+                </div>
               </div>
               <p className="text-sm">
                 One square holds one plant, whatever the crop. Large plants like banana and mango
@@ -2517,7 +3347,7 @@ export default function FarMeDashboard() {
         </section>
       </div>
 
-      <ChatHead context={chatContext} />
+      <ChatHead context={chat.context} suggestions={chat.suggestions} hint={chat.hint} />
 
       {showAdd && (
         <AddSlotModal
@@ -2571,6 +3401,68 @@ export default function FarMeDashboard() {
           </div>
         </Modal>
       )}
+      {renameAsk && renameSlot && (
+        <Modal
+          title={renameAsk === "leave" ? "Unsaved changes" : "Save these changes?"}
+          onClose={keepEditing}
+        >
+          <div className={renameAsk === "leave" ? "flex items-center gap-3 mb-4" : "mb-4"}>
+            {renameAsk === "leave" && (
+              <Img src={sproutShocked} alt="" w={72} h={72} label="sprout" />
+            )}
+            <div className="min-w-0">
+              {renameAsk === "leave" && (
+                <p className="mb-2">You changed the name but haven’t saved it yet.</p>
+              )}
+              <ul className="list-disc pl-5 flex flex-col gap-1">
+                <li className="break-words">
+                  Name: {renameSlot.name} → {renameText.trim()}
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="fm-modal__actions">
+            {renameAsk === "leave" && (
+              <button type="button" className="fm-btn fm-btn--light" onClick={endRename}>
+                Discard
+              </button>
+            )}
+            <button type="button" className="fm-btn fm-btn--light" onClick={keepEditing}>
+              Keep editing
+            </button>
+            <button
+              type="button"
+              className="fm-btn fm-btn--primary"
+              onClick={saveRename}
+              disabled={renameBusy}
+              autoFocus
+            >
+              {renameBusy ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {renameLimit && (
+        <LimitModal title={renameLimit.title} lines={renameLimit.lines} onClose={closeRenameLimit} />
+      )}
+      {updated && (
+        <Modal title="Slot updated successfully!" onClose={() => setUpdated(null)}>
+          <div className="flex flex-col gap-4">
+            <div className="flex justify-center">
+              <Img src={sproutHappy} alt="" w={88} h={88} label="sprout" />
+            </div>
+            <p className="text-center break-words">“{updated.name}” has been updated.</p>
+            <button
+              type="button"
+              onClick={() => setUpdated(null)}
+              className="fm-btn fm-btn--primary"
+              autoFocus
+            >
+              Got it
+            </button>
+          </div>
+        </Modal>
+      )}
       {confirmInfo && (
         <ConfirmModal
           title={confirmInfo.title}
@@ -2580,6 +3472,131 @@ export default function FarMeDashboard() {
           onConfirm={runConfirm}
           onClose={() => setConfirm(null)}
         />
+      )}
+      {notice && <LimitModal title={notice.title} lines={notice.lines} onClose={() => setNotice(null)} />}
+      {spaceWarn && brushCrop && slot && (
+        <Modal title="It will need more space later" onClose={() => setSpaceWarn(null)}>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <p>
+                {brushCrop.name} is small now, but it will spread about {brushCrop.spacing} m wide in about{" "}
+                {effectiveMaturity(brushCrop, slot.soil)} days.
+              </p>
+              {spaceWarn.near && (
+                <p>
+                  The nearest {spaceWarn.near.other.name} is {Math.round(spaceWarn.near.dist * 10) / 10} m away
+                  {spaceWarn.near.inDays === 0
+                    ? " and already covers this spot."
+                    : `, so they will start to crowd each other in about ${inWords(spaceWarn.near.inDays)}.`}
+                </p>
+              )}
+              {spaceWarn.tooSmall && (
+                <p>
+                  This slot is only {Math.min(slot.widthM, slot.lengthM)} m across, which is tight for a full-grown{" "}
+                  {brushCrop.name}.
+                </p>
+              )}
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="fm-check"
+                checked={spaceWarn.mute}
+                onChange={(e) => setSpaceWarn((w) => ({ ...w, mute: e.target.checked }))}
+              />
+              <span>Don’t remind me again for {brushCrop.name}</span>
+            </label>
+            <div className="fm-modal__actions">
+              <button type="button" className="fm-btn fm-btn--light" onClick={() => setSpaceWarn(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="fm-btn fm-btn--primary"
+                onClick={() => {
+                  const cell = spaceWarn.cell;
+                  if (spaceWarn.mute) muteWarn(SPACE_WARN_KEY, brush);
+                  setSpaceWarn(null);
+                  plantAt(cell);
+                }}
+                autoFocus
+              >
+                Plant anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {soilWarn && brushCrop && slot && (
+        <Modal title="Not the best soil" onClose={() => setSoilWarn(null)}>
+          <div className="flex flex-col gap-4">
+            <p>
+              {brushCrop.name} grows slower in {slot.soil} soil: about {effectiveMaturity(brushCrop, slot.soil)} days
+              instead of {brushCrop.maturity}. It grows best in {brushCrop.soils[0]} soil.
+            </p>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="fm-check"
+                checked={soilWarn.mute}
+                onChange={(e) => setSoilWarn((w) => ({ ...w, mute: e.target.checked }))}
+              />
+              <span>Don’t remind me again for {brushCrop.name}</span>
+            </label>
+            <div className="fm-modal__actions">
+              <button type="button" className="fm-btn fm-btn--light" onClick={() => setSoilWarn(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="fm-btn fm-btn--primary"
+                onClick={() => {
+                  const cell = soilWarn.cell;
+                  if (soilWarn.mute) muteWarn(SOIL_WARN_KEY, brush);
+                  setSoilWarn(null);
+                  checkSpacing(cell);
+                }}
+                autoFocus
+              >
+                Plant anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {blocked && (
+        <Modal title="Those squares are taken" onClose={() => setBlocked(null)}>
+          <div className="flex flex-col gap-4">
+            <p>
+              {blocked.taken > 0 &&
+                `${blocked.taken} square${blocked.taken === 1 ? " is" : "s are"} already planted. `}
+              {blocked.outside > 0 &&
+                `${blocked.outside} plant${blocked.outside === 1 ? " would" : "s would"} land outside the plot. `}
+              Nothing was moved. Click a different spot to try again.
+            </p>
+            <div className="fm-modal__actions">
+              <button
+                type="button"
+                className="fm-btn fm-btn--light"
+                onClick={() => {
+                  setBlocked(null);
+                  setCarry([]);
+                  setPicked([]);
+                }}
+              >
+                Cancel move
+              </button>
+              <button
+                type="button"
+                className="fm-btn fm-btn--primary"
+                onClick={() => setBlocked(null)}
+                autoFocus
+              >
+                Try another spot
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {harvesting && slot && (
         <HarvestModal

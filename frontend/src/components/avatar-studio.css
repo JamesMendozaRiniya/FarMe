@@ -1,8 +1,3 @@
-/* ==========================================================================
-   avatar-studio.css: the avatar maker (components/avatar-studio.jsx).
-   every class starts with fm-av, so it can't clash with other pages' css (it is all global).
-   ========================================================================== */
-
 .fm-av-studio {
   display: flex;
   flex-direction: column;
@@ -63,7 +58,7 @@
 .fm-av-swatch[aria-pressed="true"] {
   box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--copper);
 }
-/* "no background": a white circle with a diagonal line */
+
 .fm-av-swatch--none {
   background: linear-gradient(135deg, #fff 44%, var(--danger) 44% 56%, #fff 56%);
 }

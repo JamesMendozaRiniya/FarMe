@@ -1,19 +1,5 @@
-// what the dashboard uses:
-//   key        short id. saved with every planted square, so please never rename it :D
-//   name, en   local name and english name
-//   emoji      shown in the palette and on the grid
-//   type       "vegetable" or "fruit" (decides which list it shows under)
-//   maturity   rough days from planting to harvest (stage colors, harvest date and reminders use it)
-//   soils      soils it grows well in (the recommendation rules match against these)
-//   seasons    "wet" and / or "dry" (june to november is wet, december to may is dry)
-//   temp       [min, max] comfortable temperature in celsius
-//   big        optional. true for trees / big plants, so tiny plots get a lower score
-// todo(backend): later this can become a crops table with key as the id.
-
-// soil types for the add slot form
 export const SOILS = ["Clay", "Loam", "Sandy", "Silty"];
 
-// 5 vegetables + 5 fruits common here sa philippines (the numbers are rough, not exact)
 export const CROPS = [
   {
     key: "kamatis",
@@ -22,6 +8,7 @@ export const CROPS = [
     emoji: "🍅",
     type: "vegetable",
     maturity: 70,
+    waterEvery: 1,
     soils: ["Loam", "Sandy"],
     seasons: ["dry"],
     temp: [18, 30],
@@ -33,6 +20,7 @@ export const CROPS = [
     emoji: "🍆",
     type: "vegetable",
     maturity: 85,
+    waterEvery: 1,
     soils: ["Loam", "Silty", "Clay"],
     seasons: ["wet", "dry"],
     temp: [22, 35],
@@ -43,7 +31,9 @@ export const CROPS = [
     en: "Bitter gourd",
     emoji: "🥒",
     type: "vegetable",
+    spacing: 1,
     maturity: 75,
+    waterEvery: 1,
     soils: ["Loam", "Sandy"],
     seasons: ["wet", "dry"],
     temp: [24, 35],
@@ -55,6 +45,7 @@ export const CROPS = [
     emoji: "🫛",
     type: "vegetable",
     maturity: 60,
+    waterEvery: 1,
     soils: ["Loam", "Sandy", "Silty"],
     seasons: ["wet", "dry"],
     temp: [22, 34],
@@ -66,6 +57,7 @@ export const CROPS = [
     emoji: "🥬",
     type: "vegetable",
     maturity: 30,
+    waterEvery: 1,
     soils: ["Clay", "Silty", "Loam"],
     seasons: ["wet"],
     temp: [25, 35],
@@ -76,7 +68,9 @@ export const CROPS = [
     en: "Banana",
     emoji: "🍌",
     type: "fruit",
+    spacing: 2,
     maturity: 270,
+    waterEvery: 3,
     soils: ["Loam", "Silty", "Clay"],
     seasons: ["wet", "dry"],
     temp: [24, 35],
@@ -88,7 +82,9 @@ export const CROPS = [
     en: "Papaya",
     emoji: "🍈",
     type: "fruit",
+    spacing: 2,
     maturity: 270,
+    waterEvery: 3,
     soils: ["Loam", "Sandy"],
     seasons: ["wet", "dry"],
     temp: [24, 35],
@@ -101,6 +97,7 @@ export const CROPS = [
     emoji: "🍍",
     type: "fruit",
     maturity: 450,
+    waterEvery: 7,
     soils: ["Sandy", "Loam"],
     seasons: ["wet", "dry"],
     temp: [22, 32],
@@ -111,7 +108,9 @@ export const CROPS = [
     en: "Watermelon",
     emoji: "🍉",
     type: "fruit",
+    spacing: 1.2,
     maturity: 80,
+    waterEvery: 2,
     soils: ["Sandy", "Loam"],
     seasons: ["dry"],
     temp: [24, 34],
@@ -122,7 +121,9 @@ export const CROPS = [
     en: "Mango",
     emoji: "🥭",
     type: "fruit",
+    spacing: 5,
     maturity: 1095,
+    waterEvery: 7,
     soils: ["Loam", "Clay", "Sandy"],
     seasons: ["wet", "dry"],
     temp: [24, 35],
@@ -130,5 +131,18 @@ export const CROPS = [
   },
 ];
 
-// finds a crop by its key, or null if there's no such crop
+
 export const cropByKey = (key) => CROPS.find((c) => c.key === key) || null;
+
+export const SOIL_FACTOR = { best: 0.9, ok: 1, poor: 1.25 };
+
+export const soilFit = (crop, soil) => {
+  if (!crop || !soil) return "ok";
+  const i = crop.soils.indexOf(soil);
+  return i === -1 ? "poor" : i === 0 ? "best" : "ok";
+};
+
+export const effectiveMaturity = (crop, soil) => Math.round(crop.maturity * SOIL_FACTOR[soilFit(crop, soil)]);
+
+export const cropForSoil = (crop, soil) =>
+  crop ? { ...crop, baseMaturity: crop.maturity, maturity: effectiveMaturity(crop, soil), soilFit: soilFit(crop, soil) } : crop;

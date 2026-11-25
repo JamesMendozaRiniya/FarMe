@@ -11,7 +11,6 @@
   --fm-mark-size: 28px;
 }
 
-/* cards and panels */
 .fm-card {
   background: var(--paper);
   border: 3px solid var(--pine);
@@ -24,7 +23,6 @@
   border-radius: 0.75rem;
 }
 
-/* buttons: .fm-btn is the base and the --modifiers set the colors */
 .fm-btn {
   min-height: 44px; 
   padding: 0 1rem;
@@ -73,7 +71,7 @@
   color: var(--danger);
 }
 
-/* form fields */
+
 .fm-input {
   width: 100%;
   min-height: 44px;
@@ -104,17 +102,20 @@
   font-weight: 600;
 }
 
-/* ---------- modals (every popup uses these) ---------- */
 .fm-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000; /* above the chat bubble (30) and chat window (31) so the tint covers them too */
+  z-index: 1000; 
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
   background: rgba(32, 40, 8, 0.62);
   animation: fm-fade 0.15s ease-out;
+}
+
+.fm-modal-backdrop--top {
+  z-index: 1100;
 }
 .fm-modal {
   display: flex;
@@ -198,20 +199,18 @@
   }
 }
 
-/* show the keyboard focus everywhere */
+
 .fm-btn:focus-visible,
 .fm-input:focus-visible {
   outline: 3px solid var(--copper);
   outline-offset: 2px;
 }
 
-/* helpers to show something only on phones or only on tablet and up */
+
 .fm-only-wide {
   display: none;
 }
 
-/* ---------- nav ---------- */
-/* phones: a top bar (the logo banner with a small menu button on its edge). the links drop down under it. */
 .fm-nav {
   position: sticky;
   top: 0;
@@ -232,7 +231,7 @@
   flex: 1;
   min-width: 0;
 }
-/* the collapse button floats over the logo's empty edge so there's no gap between them */
+
 .fm-nav__toggle {
   position: absolute;
   top: 0;
@@ -411,7 +410,7 @@
   display: none;
 }
 
-/* tablet and up: a full-height sidebar. collapsed means icons only. */
+
 @media (min-width: 768px) {
   .fm-only-phone {
     display: none;
@@ -501,11 +500,10 @@
   }
 }
 
-/* ---------- chat bubble + window ---------- */
 
 .fm-chat-bubble {
   position: fixed;
-  z-index: 30;
+  z-index: 1001;
   width: 64px;
   height: 64px;
   padding: 0;
@@ -543,7 +541,7 @@
 
 .fm-chat-panel {
   position: fixed;
-  z-index: 31;
+  z-index: 1002;
   display: flex;
   flex-direction: column;
   width: 360px;
@@ -590,6 +588,38 @@
   background: var(--kombu);
   color: var(--paper);
 }
+.fm-msg--bot {
+  white-space: normal;
+  line-height: 1.5;
+}
+.fm-msg--bot p {
+  margin: 0 0 0.5rem;
+}
+.fm-msg--bot p:last-child {
+  margin-bottom: 0;
+}
+.fm-msg--bot ul {
+  list-style-type: disc !important;
+  list-style-position: outside;
+  margin: 0.5rem 0;
+  padding-left: 1.5rem !important;
+}
+.fm-msg--bot ol {
+  list-style-type: decimal !important;
+  list-style-position: outside;
+  margin: 0.5rem 0;
+  padding-left: 1.5rem !important;
+}
+.fm-msg--bot li {
+  display: list-item;
+  margin-bottom: 0.35rem;
+}
+.fm-msg--bot li:last-child {
+  margin-bottom: 0;
+}
+.fm-msg--bot strong {
+  font-weight: 800;
+}
 .fm-chat-chips {
   display: flex;
   flex-wrap: wrap;
@@ -612,7 +642,6 @@
   border-top: 3px solid var(--pine);
 }
 
-/* phones: the chat takes the whole screen */
 @media (max-width: 767px) {
   .fm-chat-panel {
     top: 0 !important;
@@ -648,12 +677,12 @@
   .fm-nav__link:hover .fm-nav__mark-img--hover {
     opacity: 1;
   }
-  /* hovering the active link itself changes nothing: it keeps its active png */
+  
   .fm-nav .fm-nav__link--active:hover .fm-nav__mark-img--hover {
     opacity: 0;
   }
 }
-/* the icons-only sidebar has no room for it */
+
 .fm-nav--collapsed .fm-nav__mark {
   display: none;
 }
@@ -663,7 +692,7 @@
   }
 }
 
-/* ---------- dropdown (<Select /> in shared.jsx) ---------- */
+
 .fm-dropdown {
   position: relative;
   width: 100%;
@@ -702,7 +731,7 @@
   outline-offset: 2px;
 }
 
-/* the list sits in the page flow (not floating) so a dialog never clips it */
+
 .fm-dropdown__list {
   margin: 0.4rem 0 0;
   padding: 0.25rem;
@@ -733,14 +762,7 @@
   font-weight: 800;
 }
 
-/* while any popup is open the chat bubble and window sit under the tint, whatever z-index they have */
-body:has(.fm-modal-backdrop) .fm-chat-bubble,
-body:has(.fm-modal-backdrop) .fm-chat-panel {
-  z-index: 1;
-  pointer-events: none;
-}
 
-/* ---------- calendar (<DatePicker /> in shared.jsx) ---------- */
 .fm-cal {
   position: relative;
   display: inline-block;
@@ -874,5 +896,194 @@ body:has(.fm-modal-backdrop) .fm-chat-panel {
 @media (prefers-reduced-motion: reduce) {
   .fm-cal__popup {
     animation: none;
+  }
+}
+
+
+.fm-sprout {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--pine);
+}
+.fm-sprout--fill {
+  width: 100%;
+  height: 100%;
+  min-height: 55vh; 
+  padding: 1rem;
+}
+.fm-sprout--sm {
+  flex-direction: row;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+.fm-sprout__svg {
+  width: 88px;
+  height: 88px;
+  overflow: visible;
+}
+.fm-sprout--sm .fm-sprout__svg {
+  width: 52px;
+  height: 52px;
+}
+.fm-sprout__svg path {
+  stroke: var(--pine);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.fm-sprout__stem {
+  fill: none;
+  stroke-width: 4;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: fm-sprout-stem 2.6s ease-in-out infinite;
+}
+.fm-sprout__leaf {
+  transform-box: fill-box;
+  transform: scale(0);
+  animation: fm-sprout-leaf 2.6s ease-in-out infinite;
+}
+.fm-sprout__leaf--l {
+  fill: #a9b88a;
+  transform-origin: 100% 100%;
+}
+.fm-sprout__leaf--r {
+  fill: var(--dingley);
+  transform-origin: 0% 100%;
+  animation-delay: 0.12s;
+}
+.fm-sprout__soil {
+  fill: var(--copper);
+}
+.fm-sprout__label {
+  font-weight: 700;
+}
+.fm-sprout__dots i {
+  display: inline-block;
+  font-style: normal;
+  animation: fm-sprout-dot 1.2s ease-in-out infinite;
+}
+.fm-sprout__dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.fm-sprout__dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes fm-sprout-stem {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 1;
+  }
+  30%,
+  88% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+@keyframes fm-sprout-leaf {
+  0%,
+  28% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  46% {
+    transform: scale(1.15);
+  }
+  56%,
+  88% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@keyframes fm-sprout-dot {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes fm-sprout-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-sprout .fm-sprout__stem,
+  .fm-sprout .fm-sprout__leaf,
+  .fm-sprout .fm-sprout__dots i {
+    animation: none !important;
+    stroke-dashoffset: 0;
+    transform: none;
+    opacity: 1;
+  }
+  .fm-sprout .fm-sprout__svg {
+    animation: fm-sprout-pulse 1.8s ease-in-out infinite !important;
+  }
+}
+
+.fm-bone {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    rgba(222, 197, 158, 0.45) 25%,
+    rgba(222, 197, 158, 0.85) 50%,
+    rgba(222, 197, 158, 0.45) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: 0.5rem;
+  animation: fm-bone-shimmer 1.4s ease-in-out infinite;
+}
+.fm-bone--thumb {
+  width: 100%;
+  height: 110px;
+  border-radius: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(196, 134, 109, 0.35) 25%,
+    rgba(196, 134, 109, 0.6) 50%,
+    rgba(196, 134, 109, 0.35) 75%
+  );
+  background-size: 200% 100%;
+}
+.fm-bone--title {
+  width: 70%;
+  height: 1.3rem;
+}
+.fm-bone--line {
+  width: 85%;
+  height: 0.8rem;
+}
+@keyframes fm-bone-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-bone {
+    animation: fm-sprout-pulse 1.8s ease-in-out infinite !important;
   }
 }

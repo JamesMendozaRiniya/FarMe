@@ -198,9 +198,9 @@
   display: block;
   background: linear-gradient(
     90deg,
-    rgba(32, 40, 8, 0.08) 25%,
-    rgba(32, 40, 8, 0.18) 50%,
-    rgba(32, 40, 8, 0.08) 75%
+    rgba(222, 197, 158, 0.45) 25%,
+    rgba(222, 197, 158, 0.85) 50%,
+    rgba(222, 197, 158, 0.45) 75%
   );
   background-size: 200% 100%;
   border-radius: 0.5rem;
@@ -527,7 +527,7 @@
 .fm-suggest button:focus-visible {
   background: var(--brandy);
 }
-/* the map. isolation keeps leaflet's own layers underneath the dialog header */
+
 .fm-map {
   height: 220px;
   isolation: isolate;
@@ -536,7 +536,7 @@
   border: 3px solid var(--pine);
   border-radius: 0.75rem;
 }
-/* the pin: a copper teardrop with a pine outline */
+
 .fm-pin span {
   display: block;
   width: 22px;

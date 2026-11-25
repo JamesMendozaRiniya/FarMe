@@ -5,9 +5,121 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>farme</title>
+    <style>
+      
+      .fm-boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        font: 700 1rem system-ui, sans-serif;
+        color: #202808;
+      }
+      .fm-boot--overlay {
+        z-index: 99999;
+        background: #fbf6ea;
+        transition: opacity 0.3s ease;
+      }
+      .fm-boot svg { width: 88px; height: 88px; overflow: visible; }
+      .fm-boot path { stroke: #202808; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+      .fm-boot .stem { fill: none; stroke-width: 4; stroke-dasharray: 1; stroke-dashoffset: 1; animation: fm-boot-stem 2.6s ease-in-out infinite; }
+      .fm-boot .leaf { transform-box: fill-box; transform: scale(0); animation: fm-boot-leaf 2.6s ease-in-out infinite; }
+      .fm-boot .l { fill: #a9b88a; transform-origin: 100% 100%; }
+      .fm-boot .r { fill: #6a784d; transform-origin: 0 100%; animation-delay: 0.12s; }
+      .fm-boot .soil { fill: #c4866d; }
+      @keyframes fm-boot-stem {
+        0% { stroke-dashoffset: 1; opacity: 1; }
+        30%, 88% { stroke-dashoffset: 0; opacity: 1; }
+        100% { stroke-dashoffset: 0; opacity: 0; }
+      }
+      @keyframes fm-boot-leaf {
+        0%, 28% { transform: scale(0); opacity: 1; }
+        46% { transform: scale(1.15); }
+        56%, 88% { transform: scale(1); opacity: 1; }
+        100% { transform: scale(1); opacity: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fm-boot .stem, .fm-boot .leaf { animation: none; stroke-dashoffset: 0; transform: none; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="fm-boot" role="status" aria-live="polite">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <path class="stem" pathLength="1" d="M32 52 V30" />
+          <path class="leaf l" d="M32 34 C20 34 13 26 13 17 C24 17 32 24 32 34 Z" />
+          <path class="leaf r" d="M32 34 C44 34 51 26 51 17 C40 17 32 24 32 34 Z" />
+          <path class="soil" d="M8 60 C12 48 52 48 56 60 Z" />
+        </svg>
+        <span>Loading…</span>
+      </div>
+    </div>
+
+    
+    <script>
+      (function () {
+        var MIN_MS = 500; 
+        var IDLE_MS = 250; 
+        var MAX_MS = 8000; 
+        if (/^\/(login|register|forgot-password|reset-password)/.test(location.pathname)) return;
+
+        var root = document.getElementById("root");
+        var overlay = root.querySelector(".fm-boot").cloneNode(true);
+        overlay.className = "fm-boot fm-boot--overlay";
+        document.body.appendChild(overlay);
+
+        var pending = 0;
+        var done = false;
+        var idleTimer = null;
+        var started = Date.now();
+
+        function hide() {
+          if (done) return;
+          done = true;
+          var wait = Math.max(0, MIN_MS - (Date.now() - started));
+          setTimeout(function () {
+            overlay.style.opacity = "0";
+            setTimeout(function () {
+              overlay.remove();
+            }, 300);
+          }, wait);
+        }
+        function check() {
+          clearTimeout(idleTimer);
+          if (done) return;
+          var mounted = !root.querySelector(".fm-boot"); 
+          if (mounted && pending === 0) idleTimer = setTimeout(function () { if (pending === 0) hide(); }, IDLE_MS);
+        }
+
+       
+        var nativeFetch = window.fetch;
+        if (nativeFetch) {
+          window.fetch = function () {
+            pending++;
+            return nativeFetch.apply(this, arguments).finally(function () {
+              pending--;
+              check();
+            });
+          };
+        }
+        var nativeSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function () {
+          pending++;
+          this.addEventListener("loadend", function () {
+            pending--;
+            check();
+          });
+          return nativeSend.apply(this, arguments);
+        };
+
+        new MutationObserver(check).observe(root, { childList: true, subtree: true });
+        setTimeout(hide, MAX_MS);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
