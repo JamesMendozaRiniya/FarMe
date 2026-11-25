@@ -1,4 +1,4 @@
-import { cropByKey } from "../data/crops";
+import { cropByKey, effectiveMaturity } from "../data/crops";
 import { plantWateredToday, slotWateredToday, wateringCounts } from "./watering";
 
 const DAY_MS = 864e5;
@@ -62,7 +62,7 @@ function plantGroups(slot, now) {
         notWateredCount: 0,
       };
       if (c?.maturity != null) {
-        groups[k].harvestInDays = daysBetween(today, addDays(p.plantedOn, c.maturity));
+        groups[k].harvestInDays = daysBetween(today, addDays(p.plantedOn, effectiveMaturity(c, slot.soil)));
       }
     }
     groups[k].count += 1;

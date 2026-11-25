@@ -49,7 +49,7 @@ import {
   Select,
   DatePicker,
 } from "../../components/shared";
-import { SOILS, CROPS, cropByKey } from "../../data/crops";
+import { SOILS, CROPS, cropByKey, effectiveMaturity, soilFit } from "../../data/crops";
 import { buildChatContext } from "../../utils/chatContext";
 import { sfx } from "../../utils/sfx";
 import {
@@ -157,10 +157,26 @@ function computeGrid(widthM, lengthM) {
   }
   return { rows: 1, cols: 1, size: 5, capacity: 1 };
 }
-function getStage(plant, crop, asOf) {
+const SOIL_WARN_KEY = "fm-soil-warn-off";
+const readSoilMuted = () => {
+  try {
+    const list = JSON.parse(localStorage.getItem(SOIL_WARN_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+};
+const muteSoilWarn = (key) => {
+  try {
+    const list = readSoilMuted();
+    if (!list.includes(key)) localStorage.setItem(SOIL_WARN_KEY, JSON.stringify([...list, key]));
+  } catch {}
+};
+
+function getStage(plant, crop, asOf, soil) {
   const age = daysBetween(plant.plantedOn, asOf);
   if (age < 0) return "planned";
-  const ratio = age / crop.maturity;
+  const ratio = age / effectiveMaturity(crop, soil);
   if (ratio < 0.25) return "sprout";
   if (ratio < 0.6) return "growing";
   if (ratio < 1) return "flowering";
@@ -172,7 +188,7 @@ function buildReminders(slots) {
   slots.forEach((s) =>
     s.plants.forEach((p) => {
       const c = cropByKey(p.cropKey);
-      const date = addDays(p.plantedOn, c.maturity);
+      const date = addDays(p.plantedOn, effectiveMaturity(c, s.soil));
       const k = `${s.id}-${c.key}-${date}`;
       groups[k] = groups[k] || {
         id: k,
@@ -1211,7 +1227,7 @@ function SlotDetailModal({ slot, wx, onPick, onClose }) {
                     </span>
                     <p className="font-display font-bold">{c.name}</p>
                     <p className="text-xs">
-                      {c.en} · ~{c.maturity} days
+                      {c.en} · ~{effectiveMaturity(c, slot.soil)} days
                     </p>
                     <p className="text-sm flex-1">{r.reason}</p>
                     <button
@@ -1367,6 +1383,7 @@ function PlotGrid({
   grid,
   plantMap,
   asOf,
+  soil,
   now,
   selected,
   onSelect,
@@ -1459,7 +1476,7 @@ function PlotGrid({
             width={CELL - 2}
             height={CELL - 2}
             rx={5}
-            fill={plant ? STAGES[getStage(plant, crop, asOf)].color : COPPER}
+            fill={plant ? STAGES[getStage(plant, crop, asOf, soil)].color : COPPER}
             stroke={plant ? PINE : "#8E5A45"}
             strokeWidth={plant ? 2 : 1}
             strokeDasharray={lifted ? "4 3" : undefined}
@@ -1757,6 +1774,7 @@ export default function FarMeDashboard() {
   const [picked, setPicked] = useState([]); 
   const [carry, setCarry] = useState([]); 
   const [toolMsg, setToolMsg] = useState(""); 
+  const [soilWarn, setSoilWarn] = useState(null);
   const [blocked, setBlocked] = useState(null); 
   const [plantedOn, setPlantedOn] = useState(todayIso());
   const [preview, setPreview] = useState(0);
@@ -1842,7 +1860,7 @@ export default function FarMeDashboard() {
   const carryPlants = slot ? slot.plants.filter((p) => carry.includes(p.id)) : [];
   const pickedPlants = slot ? slot.plants.filter((p) => picked.includes(p.id)) : [];
   const readyPlants = slot
-    ? slot.plants.filter((p) => getStage(p, cropByKey(p.cropKey), todayIso()) === "ready")
+    ? slot.plants.filter((p) => getStage(p, cropByKey(p.cropKey), todayIso(), slot.soil) === "ready")
     : [];
   const pickedReady = pickedPlants.filter((p) => readyPlants.some((r) => r.id === p.id));
   const clearTrowel = () => {
@@ -2005,6 +2023,12 @@ export default function FarMeDashboard() {
         lines: ["Something is already planted there.", "Pick another square, or use the trowel to move it."],
       });
     }
+    if (soilFit(cropByKey(brush), slot.soil) === "poor" && !readSoilMuted().includes(brush))
+      return setSoilWarn({ cell, mute: false });
+    return plantAt(cell);
+  };
+
+  const plantAt = async (cell) => {
     const cellKey = `${slot.id}-${cell.row}-${cell.col}`;
     if (plantingCellsRef.current.has(cellKey)) return;
     plantingCellsRef.current.add(cellKey);
@@ -2863,6 +2887,7 @@ export default function FarMeDashboard() {
                     grid={grid}
                     plantMap={plantMap}
                     asOf={asOf}
+                    soil={slot?.soil}
                     now={now}
                     selected={selected}
                     onSelect={setSelected}
@@ -2984,7 +3009,7 @@ export default function FarMeDashboard() {
                         {selCrop.emoji} {selCrop.name}{" "}
                         <span className="text-sm font-normal">({selCrop.en})</span>
                       </h3>
-                      <p>Stage: {STAGES[getStage(selPlant, selCrop, asOf)].label}</p>
+                      <p>Stage: {STAGES[getStage(selPlant, selCrop, asOf, slot?.soil)].label}</p>
                       <p>Planted: {selPlant.plantedOn}</p>
                       {selPlant.lastHarvested && <p>Last harvested: {selPlant.lastHarvested}</p>}
                       <p className="font-bold flex items-center gap-1">
@@ -3000,7 +3025,7 @@ export default function FarMeDashboard() {
                               : `Doesn't need water yet (last: ${new Date(selPlant.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })})`}
                       </p>
                       <p className="mb-3">
-                        Harvest around: {addDays(selPlant.plantedOn, selCrop.maturity)}
+                        Harvest around: {addDays(selPlant.plantedOn, effectiveMaturity(selCrop, slot?.soil))}
                       </p>
                       <p className="text-sm">
                         Needs water every {wateringInterval(selPlant)} day{wateringInterval(selPlant) === 1 ? "" : "s"}
@@ -3230,6 +3255,43 @@ export default function FarMeDashboard() {
         />
       )}
       {notice && <LimitModal title={notice.title} lines={notice.lines} onClose={() => setNotice(null)} />}
+      {soilWarn && brushCrop && slot && (
+        <Modal title="Not the best soil" onClose={() => setSoilWarn(null)}>
+          <div className="flex flex-col gap-4">
+            <p>
+              {brushCrop.name} grows slower in {slot.soil} soil: about {effectiveMaturity(brushCrop, slot.soil)} days
+              instead of {brushCrop.maturity}. It grows best in {brushCrop.soils[0]} soil.
+            </p>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="fm-check"
+                checked={soilWarn.mute}
+                onChange={(e) => setSoilWarn((w) => ({ ...w, mute: e.target.checked }))}
+              />
+              <span>Don’t remind me again for {brushCrop.name}</span>
+            </label>
+            <div className="fm-modal__actions">
+              <button type="button" className="fm-btn fm-btn--light" onClick={() => setSoilWarn(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="fm-btn fm-btn--primary"
+                onClick={() => {
+                  const cell = soilWarn.cell;
+                  if (soilWarn.mute) muteSoilWarn(brush);
+                  setSoilWarn(null);
+                  plantAt(cell);
+                }}
+                autoFocus
+              >
+                Plant anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {blocked && (
         <Modal title="Those squares are taken" onClose={() => setBlocked(null)}>
           <div className="flex flex-col gap-4">

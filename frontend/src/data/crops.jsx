@@ -128,3 +128,16 @@ export const CROPS = [
 
 
 export const cropByKey = (key) => CROPS.find((c) => c.key === key) || null;
+
+export const SOIL_FACTOR = { best: 0.9, ok: 1, poor: 1.25 };
+
+export const soilFit = (crop, soil) => {
+  if (!crop || !soil) return "ok";
+  const i = crop.soils.indexOf(soil);
+  return i === -1 ? "poor" : i === 0 ? "best" : "ok";
+};
+
+export const effectiveMaturity = (crop, soil) => Math.round(crop.maturity * SOIL_FACTOR[soilFit(crop, soil)]);
+
+export const cropForSoil = (crop, soil) =>
+  crop ? { ...crop, baseMaturity: crop.maturity, maturity: effectiveMaturity(crop, soil), soilFit: soilFit(crop, soil) } : crop;

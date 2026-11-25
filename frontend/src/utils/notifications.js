@@ -1,4 +1,4 @@
-import { cropByKey } from "../data/crops";
+import { cropByKey, effectiveMaturity } from "../data/crops";
 import { slotWateredToday } from "./watering";
 
 const dayOf = (ms) => new Date(ms).toLocaleDateString("en-CA");
@@ -35,7 +35,7 @@ export function notificationIds(slots, now) {
     (s.plants || []).forEach((p) => {
       const c = cropByKey(p.cropKey);
       if (!c) return;
-      const date = addDays(p.plantedOn, c.maturity);
+      const date = addDays(p.plantedOn, effectiveMaturity(c, s.soil));
       if (daysBetween(today, date) > 7) return;
       seen.add(`harvest-${s.id}-${c.key}-${date}`);
     }),
