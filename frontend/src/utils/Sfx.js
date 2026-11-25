@@ -326,6 +326,9 @@ export const sfx = {
     });
   }),
 
+  /* UNUSED: windmill sounds. The windmill on the home page now uses its own
+     wSfx sounds inside home.jsx, so these are kept only for reference.
+
   whoosh(level = 0) {
     try {
       const c = audio();
@@ -358,6 +361,7 @@ export const sfx = {
     tone(c, { type: "sawtooth", from: 300, to: 150, start: 0.19, dur: 0.16, gain: 0.35 });
     noise(c, { dur: 0.14, from: 900, to: 400, type: "bandpass", gain: 0.2 });
   }),
+  */
 
   isEnabled: () => enabled,
 
