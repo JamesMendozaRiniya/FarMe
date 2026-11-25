@@ -1,4 +1,4 @@
-import { cropByKey, effectiveMaturity } from "../data/crops";
+import { CROPS, SOILS, cropByKey, effectiveMaturity } from "../data/crops";
 import { plantWateredToday, slotWateredToday, wateringCounts } from "./watering";
 
 const DAY_MS = 864e5;
@@ -14,6 +14,18 @@ const addDays = (iso, n) => {
   d.setDate(d.getDate() + n);
   return d.toLocaleDateString("en-CA");
 };
+
+function soilGrowthGuide() {
+  return {
+    rule: "Days to harvest = baseDays x factor. The first soil in soilsBestFirst is the best soil (x0.9, faster). Other listed soils are fine (x1.0). Any soil not listed is a poor fit (x1.25, slower).",
+    crops: CROPS.map((c) => ({
+      crop: cropLabel(c.key),
+      baseDays: c.maturity,
+      soilsBestFirst: c.soils,
+      daysBySoil: Object.fromEntries(SOILS.map((s) => [s, effectiveMaturity(c, s)])),
+    })),
+  };
+}
 
 function partOfDay(now) {
   const h = new Date(now).getHours();
@@ -207,6 +219,7 @@ export function buildChatContext({ page, season, slot, slots = [], weather, now 
     slot: slot ? { ...slotDetail(slot, now), weather } : undefined,
     fields: slots.map((s) => fieldSummary(s, now)),
     attention: attention.slice(0, 5).map((a) => a.text),
+    soilGrowthGuide: soilGrowthGuide(),
   };
 
   return {
