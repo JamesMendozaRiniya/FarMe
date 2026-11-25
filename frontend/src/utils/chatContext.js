@@ -1,4 +1,5 @@
-import { cropByKey } from "../data/crops";
+import { CROPS, SOILS, cropByKey, effectiveMaturity } from "../data/crops";
+import { plantWateredToday, slotWateredToday, wateringCounts } from "./watering";
 
 const DAY_MS = 864e5;
 const MAX_HARVESTS = 10;
@@ -13,6 +14,18 @@ const addDays = (iso, n) => {
   d.setDate(d.getDate() + n);
   return d.toLocaleDateString("en-CA");
 };
+
+function soilGrowthGuide() {
+  return {
+    rule: "Days to harvest = baseDays x factor. The first soil in soilsBestFirst is the best soil (x0.9, faster). Other listed soils are fine (x1.0). Any soil not listed is a poor fit (x1.25, slower).",
+    crops: CROPS.map((c) => ({
+      crop: cropLabel(c.key),
+      baseDays: c.maturity,
+      soilsBestFirst: c.soils,
+      daysBySoil: Object.fromEntries(SOILS.map((s) => [s, effectiveMaturity(c, s)])),
+    })),
+  };
+}
 
 function partOfDay(now) {
   const h = new Date(now).getHours();
@@ -33,12 +46,15 @@ function wateringInfo(slot, now) {
   if (!slot.lastWatered) return { logged: false };
   const today = dayOf(now);
   const daysAgo = daysBetween(dayOf(slot.lastWatered), today);
+  const counts = wateringCounts(slot, now);
   return {
     logged: true,
     date: dayOf(slot.lastWatered),
     time: new Date(slot.lastWatered).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
     daysAgo,
-    wateredToday: daysAgo === 0,
+    wateredToday: slotWateredToday(slot, now),
+    plantsWateredToday: counts.watered,
+    plantsNotWateredToday: counts.notWatered,
   };
 }
 
@@ -54,14 +70,27 @@ function plantGroups(slot, now) {
         count: 0,
         plantedOn: p.plantedOn,
         ageDays: daysBetween(p.plantedOn, today),
+        wateredCount: 0,
+        notWateredCount: 0,
       };
       if (c?.maturity != null) {
-        groups[k].harvestInDays = daysBetween(today, addDays(p.plantedOn, c.maturity));
+        groups[k].harvestInDays = daysBetween(today, addDays(p.plantedOn, effectiveMaturity(c, slot.soil)));
       }
     }
     groups[k].count += 1;
+    groups[k][plantWateredToday(p, now) ? "wateredCount" : "notWateredCount"] += 1;
   });
   return Object.values(groups).sort((a, b) => (a.harvestInDays ?? 1e9) - (b.harvestInDays ?? 1e9));
+}
+
+function plantsByWatering(slot, now) {
+  const out = { wateredToday: {}, notWateredToday: {} };
+  (slot.plants || []).forEach((p) => {
+    const bucket = plantWateredToday(p, now) ? out.wateredToday : out.notWateredToday;
+    const label = cropLabel(p.cropKey);
+    bucket[label] = (bucket[label] || 0) + 1;
+  });
+  return out;
 }
 
 function slotDetail(slot, now) {
@@ -86,6 +115,7 @@ function slotDetail(slot, now) {
     areaM2: Math.round(slot.widthM * slot.lengthM),
     lastWatered: wateringInfo(slot, now),
     plants: plantGroups(slot, now),
+    plantsByWatering: plantsByWatering(slot, now),
     recentHarvests: harvests,
     recentNotes: notes,
   };
@@ -112,10 +142,18 @@ function attentionFor(slots, now, weather) {
       const since = w.logged
         ? `last watered ${w.daysAgo} day(s) ago`
         : "no watering has been logged yet";
+      const c = wateringCounts(s, now);
+      const detail =
+        c.watered > 0
+          ? `${c.notWatered} of ${c.total} plants are not watered yet today`
+          : `has not been watered today (${since}`;
       items.push({
         kind: "water",
         slot: s.name,
-        text: `${s.name} has not been watered today (${since}; it is ${phase}).`,
+        text:
+          c.watered > 0
+            ? `${s.name}: ${detail} (it is ${phase}).`
+            : `${s.name} ${detail}; it is ${phase}).`,
         chip: `Should I water ${s.name} today?`,
         score: w.logged ? 60 + Math.min(w.daysAgo, 10) * 3 : 75,
       });
@@ -181,6 +219,7 @@ export function buildChatContext({ page, season, slot, slots = [], weather, now 
     slot: slot ? { ...slotDetail(slot, now), weather } : undefined,
     fields: slots.map((s) => fieldSummary(s, now)),
     attention: attention.slice(0, 5).map((a) => a.text),
+    soilGrowthGuide: soilGrowthGuide(),
   };
 
   return {

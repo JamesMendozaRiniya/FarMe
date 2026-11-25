@@ -91,6 +91,10 @@ class Plant(Base):
         Date,
         nullable=True
     )
+    last_watered: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
 
     slot: Mapped["Slot"] = relationship(back_populates="plants")
 

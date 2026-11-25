@@ -40,6 +40,10 @@ def serialize_slot(slot):
                 "lastHarvested": (
                     plant.last_harvested.isoformat()
                     if plant.last_harvested else None
+                ),
+                "lastWatered": (
+                    int(plant.last_watered.timestamp() * 1000)
+                    if plant.last_watered else None
                 )
             }
             for plant in slot.plants

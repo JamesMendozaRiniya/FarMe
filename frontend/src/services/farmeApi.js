@@ -3,10 +3,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 export const AI_ENDPOINT = null;
 export const CHAT_ENDPOINT = null;
 
-
 const LEGACY_LOCAL_KEYS = ["farme.slots.v2", "farme.notifs.v1", "farme.chat.v1"];
-
-
 
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -50,8 +47,6 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
-
-
 export async function getSlots() {
   return apiRequest("/slots");
 }
@@ -76,8 +71,6 @@ export async function deleteSlotAPI(id) {
   });
 }
 
-
-
 export async function createPlantAPI(slotId, plant) {
   return apiRequest(`/slots/${slotId}/plants`, {
     method: "POST",
@@ -92,13 +85,18 @@ export async function updatePlantAPI(plantId, updates) {
   });
 }
 
+export async function movePlantsAPI(slotId, moves) {
+  return apiRequest(`/slots/${slotId}/plants/move`, {
+    method: "POST",
+    body: JSON.stringify({ moves }),
+  });
+}
+
 export async function deletePlantAPI(plantId) {
   return apiRequest(`/plants/${plantId}`, {
     method: "DELETE",
   });
 }
-
-
 
 export async function createHarvestAPI(slotId, harvest) {
   return apiRequest(`/slots/${slotId}/harvests`, {
@@ -120,8 +118,6 @@ export async function deleteHarvestAPI(harvestId) {
   });
 }
 
-
-
 export async function createNoteAPI(slotId, note) {
   return apiRequest(`/slots/${slotId}/notes`, {
     method: "POST",
@@ -142,16 +138,12 @@ export async function deleteNoteAPI(noteId) {
   });
 }
 
-
-
-export async function logWatering(slotId, at) {
+export async function logWatering(slotId, at, plantIds) {
   return apiRequest(`/slots/${slotId}/waterings`, {
     method: "POST",
-    body: JSON.stringify({ at }),
+    body: JSON.stringify(plantIds ? { at, plantIds } : { at }),
   });
 }
-
-
 
 export async function getNotificationStates() {
   const rows = await apiRequest("/notifications");
@@ -179,8 +171,6 @@ export async function deleteNotificationAPI(notifId) {
   });
 }
 
-
-
 export async function register(payload) {
   return apiRequest("/auth/register", {
     method: "POST",
@@ -196,8 +186,6 @@ export async function register(payload) {
   });
 }
 
-
-
 export async function login(payload) {
   return apiRequest("/auth/login", {
     method: "POST",
@@ -207,7 +195,6 @@ export async function login(payload) {
     }),
   });
 }
-
 
 export async function forgotPassword(payload) {
   return apiRequest("/auth/forgot-password", {
@@ -227,8 +214,6 @@ export async function resetPassword(payload) {
     }),
   });
 }
-
-
 
 export async function getUser() {
   const user = await apiRequest("/auth/me");
@@ -312,8 +297,6 @@ export async function deleteAccount(payload) {
   return result;
 }
 
-
-
 export async function logout() {
   try {
     await apiRequest("/auth/logout", {
@@ -325,8 +308,6 @@ export async function logout() {
     window.location.assign("/login");
   }
 }
-
-
 
 const COUNTRY = "PH";
 
@@ -445,8 +426,6 @@ export async function reverseGeocode(lat, lon) {
   );
 }
 
-
-
 const WMO = (code) =>
   code === 0
     ? ["Clear", "☀️"]
@@ -462,14 +441,15 @@ const WMO = (code) =>
 
 export async function fetchWeather(lat, lon) {
   const response = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code`
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&forecast_days=3&timezone=auto`
   );
 
   if (!response.ok) {
     throw new Error(`weather failed (${response.status})`);
   }
 
-  const current = (await response.json()).current;
+  const data = await response.json();
+  const current = data.current;
 
   if (!current) {
     throw new Error("weather response had no data");
@@ -477,14 +457,26 @@ export async function fetchWeather(lat, lon) {
 
   const [label, emoji] = WMO(current.weather_code);
 
+  const daily = data.daily;
+  const forecast = daily?.time
+    ? daily.time.map((date, i) => ({
+        date,
+        label: WMO(daily.weather_code[i])[0],
+        maxTemp: Math.round(daily.temperature_2m_max[i]),
+        minTemp: Math.round(daily.temperature_2m_min[i]),
+        rainChancePct: daily.precipitation_probability_max?.[i] ?? null,
+        rainMm: daily.precipitation_sum?.[i] ?? null,
+      }))
+    : [];
+
   return {
     temp: Math.round(current.temperature_2m),
     humidity: current.relative_humidity_2m,
     label,
     emoji,
+    forecast,
   };
 }
-
 
 export async function fetchRecommendations(ctx) {
   if (!AI_ENDPOINT) return null;
@@ -512,10 +504,7 @@ export async function fetchRecommendations(ctx) {
   }
 }
 
-
-
-
-export async function sendChat({ message, conversationId = null }) {
+export async function sendChat({ message, conversationId = null, context = null }) {
   if (!message?.trim()) {
     throw new Error("No user message provided.");
   }
@@ -536,6 +525,7 @@ export async function sendChat({ message, conversationId = null }) {
       body: JSON.stringify({
         message: message.trim(),
         conversation_id: conversationId,
+        context: context || {},
       }),
       signal: controller.signal,
     });
@@ -560,11 +550,6 @@ export async function sendChat({ message, conversationId = null }) {
     clearTimeout(timeoutId);
   }
 }
-
-
-
-
-
 
 export async function getCrops(search = "", category = "") {
   const params = new URLSearchParams();

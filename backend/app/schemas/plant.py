@@ -15,3 +15,13 @@ class PlantUpdate(BaseModel):
     col: int | None = Field(default=None, ge=0)
     plantedOn: date | None = None
     lastHarvested: date | None = None
+
+
+class PlantMove(BaseModel):
+    id: int
+    row: int = Field(ge=0)
+    col: int = Field(ge=0)
+
+
+class PlantsMove(BaseModel):
+    moves: list[PlantMove] = Field(min_length=1, max_length=500)

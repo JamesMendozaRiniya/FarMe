@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from app.core.config import settings
 from app.db.database import Base, engine
@@ -45,6 +45,19 @@ app.include_router(users_router)
 app.include_router(ai_router)
 
 Base.metadata.create_all(bind=engine)
+
+_plant_columns = {c["name"] for c in inspect(engine).get_columns("plants")}
+
+if "last_watered" not in _plant_columns:
+    with engine.begin() as connection:
+        connection.execute(text(
+            "ALTER TABLE plants ADD COLUMN last_watered TIMESTAMPTZ"
+        ))
+        connection.execute(text(
+            "UPDATE plants SET last_watered = slots.last_watered "
+            "FROM slots WHERE plants.slot_id = slots.id "
+            "AND slots.last_watered IS NOT NULL"
+        ))
 
 
 @app.get("/")

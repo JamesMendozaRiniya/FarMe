@@ -40,7 +40,7 @@ import {
   DatePicker,
 } from "../../components/shared";
 
-import { CROPS, cropByKey } from "../../data/crops";
+import { CROPS, cropByKey, cropForSoil } from "../../data/crops";
 import { buildChatContext } from "../../utils/chatContext";
 
 import "./library.css";
@@ -96,7 +96,7 @@ const stageOf = (age, maturity) => {
 function cropsIn(slot) {
   const g = {};
   slot.plants.forEach((p) => {
-    const crop = cropByKey(p.cropKey);
+    const crop = cropForSoil(cropByKey(p.cropKey), slot.soil);
     if (!crop) return; 
     const e = (g[crop.key] ||= { crop, count: 0, groups: {}, list: [] });
     e.count++;
@@ -372,8 +372,8 @@ const TAB_COLORS = [
 const tabColor = (key) => TAB_COLORS[Math.max(0, CROPS.findIndex((c) => c.key === key)) % TAB_COLORS.length];
 
 const inRange = (d, from, to) => (!from || d >= from) && (!to || d <= to);
-function plantPasses(p, f) {
-  const crop = cropByKey(p.cropKey);
+function plantPasses(p, f, soil) {
+  const crop = cropForSoil(cropByKey(p.cropKey), soil);
   if (!crop) return false;
   return (
     (f.crops.length === 0 || f.crops.includes(p.cropKey)) &&
@@ -383,7 +383,7 @@ function plantPasses(p, f) {
   );
 }
 
-const filterSlot = (slot, f) => ({ ...slot, plants: slot.plants.filter((p) => plantPasses(p, f)) });
+const filterSlot = (slot, f) => ({ ...slot, plants: slot.plants.filter((p) => plantPasses(p, f, slot.soil)) });
 function sortTiles(tiles, sort) {
   const first = (t) => t.batches[0];
   const last = (t) => t.batches[t.batches.length - 1];
@@ -1206,9 +1206,9 @@ function Detail({ slot, info, plant, notes, tab, onTab, onBack, onBackToCrop, on
   const shown = plant ? [plant] : info.plants;
   const facts = [
     ["Type", crop.type === "fruit" ? "Fruit" : "Vegetable"],
-    ["Maturity", `about ${crop.maturity} days`],
+    ["Maturity", `about ${crop.maturity} days${crop.soilFit === "best" ? ` (faster in ${slot.soil} soil)` : crop.soilFit === "poor" ? ` (slower in ${slot.soil} soil, ${crop.baseMaturity} days in a good soil)` : ""}`],
     ["Temperature", `${crop.temp[0]}–${crop.temp[1]}°C`],
-    ["Soil", crop.soils.join(", ")],
+    ["Soil", `${crop.soils.join(", ")} (best: ${crop.soils[0]})`],
     ["Seasons", crop.seasons.map((s) => (s === "wet" ? "Wet" : "Dry")).join(", ")],
   ];
 

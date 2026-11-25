@@ -1,4 +1,5 @@
-import { cropByKey } from "../data/crops";
+import { cropByKey, effectiveMaturity } from "../data/crops";
+import { slotWateredToday } from "./watering";
 
 const dayOf = (ms) => new Date(ms).toLocaleDateString("en-CA");
 const addDays = (iso, n) => {
@@ -24,7 +25,7 @@ export function notificationIds(slots, now) {
   const phase = waterPhase(now);
   if (phase) {
     slots.forEach((s) => {
-      const watered = !!s.lastWatered && dayOf(s.lastWatered) === dayOf(now);
+      const watered = slotWateredToday(s, now);
       if ((s.plants || []).length > 0 && !watered) ids.push(`water-${s.id}-${dayOf(now)}-${phase}`);
     });
   }
@@ -34,7 +35,7 @@ export function notificationIds(slots, now) {
     (s.plants || []).forEach((p) => {
       const c = cropByKey(p.cropKey);
       if (!c) return;
-      const date = addDays(p.plantedOn, c.maturity);
+      const date = addDays(p.plantedOn, effectiveMaturity(c, s.soil));
       if (daysBetween(today, date) > 7) return;
       seen.add(`harvest-${s.id}-${c.key}-${date}`);
     }),
