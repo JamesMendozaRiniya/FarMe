@@ -1,4 +1,3 @@
-
 const KEY_ON = "fm-sfx-on";
 const KEY_VOL = "fm-sfx-volume";
 
@@ -325,6 +324,39 @@ export const sfx = {
       dur: 0.35,
       gain: 0.1,
     });
+  }),
+
+  whoosh(level = 0) {
+    try {
+      const c = audio();
+      if (!c) return;
+      const l = Math.min(10, Math.max(0, level));
+      noise(c, {
+        dur: 0.32,
+        from: 420 + l * 90,
+        to: 1300 + l * 160,
+        type: "bandpass",
+        q: 0.7,
+        gain: 0.45 + l * 0.03,
+      });
+    } catch {}
+  },
+
+  gust: play((c) => {
+    noise(c, { dur: 1.8, from: 300, to: 1800, type: "bandpass", q: 0.5, gain: 0.6 });
+    noise(c, { start: 0.4, dur: 1.6, from: 1800, to: 400, type: "bandpass", q: 0.5, gain: 0.4 });
+  }),
+
+  chopper: play((c) => {
+    for (let i = 0; i < 24; i++) {
+      noise(c, { start: i * 0.085, dur: 0.06, from: 260, to: 140, type: "lowpass", gain: 0.5 });
+    }
+  }),
+
+  oink: play((c) => {
+    tone(c, { type: "sawtooth", from: 330, to: 170, dur: 0.14, gain: 0.35 });
+    tone(c, { type: "sawtooth", from: 300, to: 150, start: 0.19, dur: 0.16, gain: 0.35 });
+    noise(c, { dur: 0.14, from: 900, to: 400, type: "bandpass", gain: 0.2 });
   }),
 
   isEnabled: () => enabled,

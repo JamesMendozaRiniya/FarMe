@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./home.css";
 import { getUser, getSlots, getNotificationStates } from "../../services/farmeApi";
 import { countUnread } from "../../utils/notifications";
 import { Sidebar, ChatHead } from "../../components/shared";
+import { sfx } from "../../utils/sfx";
 import barnImg from "../../assets/home/barn.gif";
 import mountainImg from "../../assets/home/mountain.gif";
 import wheelbarrowImg from "../../assets/home/wheelbarrow.gif"; 
@@ -161,29 +162,276 @@ function Bed({ c, rows, cols, s, delay }) {
 }
 
 
-function Windmill({ x, y, sc = 1 }) {
+const WIND_LINES = [
+  "Nice day for farming!",
+  "Wheee! Spin me faster!",
+  "Don't forget to water!",
+  "The wind is perfect today.",
+  "Plant something new!",
+  "Free breeze, no charge.",
+  "Is that a sprout I see?",
+  "Hold on to your hat!",
+  "Harvest time is coming!",
+  "Round and round we go!",
+];
+const WIND_DIZZY = ["I'm getting dizzy...", "WHEEEEEE!", "Too... fast...", "Faster! Faster!"];
+const GUST_LEAVES = [
+  { x: -20, y: -90, d: 0, dy: -60 },
+  { x: 10, y: -60, d: 0.15, dy: 40 },
+  { x: -34, y: -40, d: 0.3, dy: -30 },
+  { x: 24, y: -110, d: 0.45, dy: 70 },
+  { x: -10, y: -20, d: 0.6, dy: -70 },
+  { x: 36, y: -75, d: 0.75, dy: 20 },
+  { x: -26, y: -120, d: 0.9, dy: 55 },
+  { x: 4, y: -45, d: 1.05, dy: -45 },
+  { x: -40, y: -70, d: 1.2, dy: 30 },
+];
+const GUST_STREAKS = [
+  { x: -30, y: -100, len: 70, d: 0 },
+  { x: 0, y: -70, len: 90, d: 0.2 },
+  { x: -20, y: -40, len: 60, d: 0.4 },
+  { x: 10, y: -125, len: 80, d: 0.6 },
+];
+const MAX_SPIN = 10;
+const BASE_SPIN = 9;
+const reducedMotion = () =>
+  typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+function FlyingPig() {
+  return (
+    <g>
+      <g className="fm-home__wing">
+        <ellipse cx="4" cy="-14" rx="11" ry="5" fill="#FBF6EA" stroke={LINE} strokeWidth="1.3" />
+      </g>
+      <ellipse cx="0" cy="0" rx="16" ry="11" fill="#F6B2B8" stroke={LINE} strokeWidth="1.5" />
+      <rect x="-9" y="8" width="4" height="7" rx="2" fill="#F08A97" stroke={LINE} strokeWidth="1" />
+      <rect x="6" y="8" width="4" height="7" rx="2" fill="#F08A97" stroke={LINE} strokeWidth="1" />
+      <path d="M15 -3 q7 -4 4 -9 q-4 -3 -6 2" fill="none" stroke="#F08A97" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="-17" cy="-2" r="9" fill="#F6B2B8" stroke={LINE} strokeWidth="1.5" />
+      <path d="M-19 -9.5 l-3 -6 l8 3 z" fill="#F08A97" stroke={LINE} strokeWidth="1" strokeLinejoin="round" />
+      <ellipse cx="-25" cy="0" rx="4" ry="3.4" fill="#F08A97" stroke={LINE} strokeWidth="1.2" />
+      <circle cx="-26" cy="-0.5" r="0.8" fill="#7B3F4A" />
+      <circle cx="-24" cy="0.8" r="0.8" fill="#7B3F4A" />
+      <circle cx="-19.5" cy="-4.5" r="1.5" fill={LINE} />
+      <g className="fm-home__wing fm-home__wing--b">
+        <ellipse cx="6" cy="-12" rx="10" ry="4.5" fill="#FFFFFF" stroke={LINE} strokeWidth="1.3" />
+      </g>
+    </g>
+  );
+}
+
+function Windmill({ x, y, sc = 1, crops = 0 }) {
+  const bladesRef = useRef(null);
+  const st = useRef({
+    angle: 0,
+    vel: BASE_SPIN,
+    level: 0,
+    lastClick: 0,
+    lastDecay: 0,
+    clicks: [],
+    hold: false,
+    heli: false,
+    pig: false,
+    lastLine: "",
+  });
+  const timers = useRef([]);
+  const sayTimer = useRef(null);
+  const [bubble, setBubble] = useState(null);
+  const [heli, setHeli] = useState(0);
+  const [gust, setGust] = useState(0);
+  const [pig, setPig] = useState(0);
+  const reach = -(x / sc) - 110;
+
+  useEffect(() => {
+    const timerList = timers.current;
+    return () => {
+      timerList.forEach(clearTimeout);
+      clearTimeout(sayTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (reducedMotion()) return;
+    let raf;
+    let last = performance.now();
+    const tick = (now) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const s = st.current;
+      if (!s.hold && s.level > 0 && now - s.lastClick > 1200 && now - s.lastDecay > 600) {
+        s.level -= 1;
+        s.lastDecay = now;
+      }
+      const target = BASE_SPIN + s.level * 160;
+      s.vel += (target - s.vel) * Math.min(1, dt * 2.5);
+      s.angle = (s.angle + s.vel * dt) % 360;
+      bladesRef.current?.setAttribute("transform", `rotate(${s.angle.toFixed(2)})`);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const later = (fn, ms) => {
+    timers.current.push(setTimeout(fn, ms));
+  };
+  const say = (text, ms = 2600) => {
+    clearTimeout(sayTimer.current);
+    setBubble({ id: Date.now() + Math.random(), text });
+    sayTimer.current = setTimeout(() => setBubble(null), ms);
+  };
+  const pickLine = (level) => {
+    const pool =
+      level >= 7
+        ? WIND_DIZZY
+        : [...WIND_LINES, ...(crops > 0 ? [`${crops} crops growing. Nice!`] : [])];
+    let line;
+    do {
+      line = pool[Math.floor(Math.random() * pool.length)];
+    } while (pool.length > 1 && line === st.current.lastLine);
+    st.current.lastLine = line;
+    return line;
+  };
+
+  const takeOff = () => {
+    const s = st.current;
+    s.clicks = [];
+    if (reducedMotion()) return say("I'd fly away, but motion is off.", 3000);
+    s.heli = true;
+    s.hold = true;
+    s.level = MAX_SPIN;
+    setHeli(Date.now());
+    setGust(Date.now());
+    sfx.gust?.();
+    sfx.chopper?.();
+    say("Weeeee! Taking off!", 2400);
+    later(() => say("Phew... I'm back!", 2200), 5400);
+    later(() => setGust(0), 4800);
+    later(() => {
+      s.heli = false;
+      s.hold = false;
+      setHeli(0);
+    }, 6100);
+  };
+
+  const launchPig = () => {
+    const s = st.current;
+    s.clicks = [];
+    if (reducedMotion()) return say("Oink! Turn on motion to see me fly.", 3000);
+    s.pig = true;
+    setPig(Date.now());
+    sfx.oink?.();
+    say("Oink! When pigs fly!", 2800);
+    later(() => {
+      s.pig = false;
+      setPig(0);
+    }, 6500);
+  };
+
+  const poke = () => {
+    const s = st.current;
+    if (s.heli) return;
+    const now = performance.now();
+    s.level = Math.min(MAX_SPIN, s.level + 1);
+    s.lastClick = now;
+    sfx.whoosh?.(s.level);
+    s.clicks = [...s.clicks, now].filter((t) => now - t < 8000).slice(-12);
+    const c = s.clicks;
+
+    if (c.length >= 5) {
+      const last = c.slice(-5);
+      const iv = last.slice(1).map((t, i) => t - last[i]);
+      const slow = (v) => v >= 400 && v <= 2000;
+
+      if (slow(iv[0]) && slow(iv[1]) && iv[2] <= 2000 && iv[3] <= 350) return takeOff();
+    }
+    if (!s.pig && c.length >= 10 && now - c[c.length - 10] <= 4000) return launchPig();
+
+    say(pickLine(s.level));
+  };
+
+  const bw = bubble ? Math.max(110, bubble.text.length * 6.1 + 22) : 0;
+
   return (
     <g transform={`translate(${x} ${y}) scale(${sc})`}>
-            <ellipse cx="2" cy="1" rx="24" ry="4.500" fill="#2F5A1E" opacity="0.2" />
-            <path d="M-17 0 L-11 -62 H11 L17 0 Z" fill="#EFE4C6" stroke={LINE} strokeWidth="1.8" strokeLinejoin="round" />
-            <path d="M3 -62 H11 L17 0 H3 Z" fill="#D8C9A2" opacity="0.85" />
-            <path d="M-15 -62 L0 -80 L15 -62 Z" fill="#8A5A44" stroke={LINE} strokeWidth="1.8" strokeLinejoin="round" />
-            <path d="M-15 -62 L0 -80 L0 -62 Z" fill="#A9715A" />
-            <path d="M-5 0 v-14 a5 5 0 0 1 10 0 v14 z" fill={WOOD_D} stroke={LINE} strokeWidth="1.5" />
-            <rect x="-4" y="-40" width="8" height="10" rx="4" fill="#9FC3CF" stroke={LINE} strokeWidth="1.4" />
-            <g transform="translate(0 -60)">
-              <g className="fm-home__blades">
-                {[0, 90, 180, 270].map((a) => (
-                  <g key={a} transform={`rotate(${a})`}>
-                    <rect x="-3" y="-44" width="6" height="44" fill={WOOD} stroke={LINE} strokeWidth="1.5" />
-                    <rect x="3" y="-44" width="13" height="30" rx="2" fill="#F8EFD8" stroke={LINE} strokeWidth="1.5" />
-                    <path d="M6 -42 V-16 M10 -42 V-16" stroke="#D9CBA6" strokeWidth="1.2" />
-                  </g>
-                ))}
+      <ellipse cx="2" cy="1" rx="24" ry="4.500" fill="#2F5A1E" opacity="0.2" />
+      <g
+        className={heli ? "fm-home__lift fm-home__lift--go" : "fm-home__lift"}
+        onClick={poke}
+        style={{ cursor: "pointer" }}
+      >
+        <rect x="-50" y="-108" width="100" height="108" fill="transparent" />
+        <path d="M-17 0 L-11 -62 H11 L17 0 Z" fill="#EFE4C6" stroke={LINE} strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M3 -62 H11 L17 0 H3 Z" fill="#D8C9A2" opacity="0.85" />
+        <path d="M-15 -62 L0 -80 L15 -62 Z" fill="#8A5A44" stroke={LINE} strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M-15 -62 L0 -80 L0 -62 Z" fill="#A9715A" />
+        <path d="M-5 0 v-14 a5 5 0 0 1 10 0 v14 z" fill={WOOD_D} stroke={LINE} strokeWidth="1.5" />
+        <rect x="-4" y="-40" width="8" height="10" rx="4" fill="#9FC3CF" stroke={LINE} strokeWidth="1.4" />
+        <g transform="translate(0 -60)">
+          <g ref={bladesRef}>
+            {[0, 90, 180, 270].map((a) => (
+              <g key={a} transform={`rotate(${a})`}>
+                <rect x="-3" y="-44" width="6" height="44" fill={WOOD} stroke={LINE} strokeWidth="1.5" />
+                <rect x="3" y="-44" width="13" height="30" rx="2" fill="#F8EFD8" stroke={LINE} strokeWidth="1.5" />
+                <path d="M6 -42 V-16 M10 -42 V-16" stroke="#D9CBA6" strokeWidth="1.2" />
               </g>
-              <circle r="5" fill={WOOD_D} stroke={LINE} strokeWidth="1.5" />
+            ))}
+          </g>
+          <circle r="5" fill={WOOD_D} stroke={LINE} strokeWidth="1.5" />
+        </g>
+      </g>
+
+      {gust > 0 && (
+        <g key={`gust-${gust}`} pointerEvents="none" aria-hidden="true" style={{ "--reach": `${reach}px` }}>
+          {GUST_STREAKS.map((g, i) => (
+            <path
+              key={`s${i}`}
+              className="fm-home__streak"
+              d={`M${g.x} ${g.y} h${g.len}`}
+              stroke="#FFFFFF"
+              strokeWidth="2"
+              strokeLinecap="round"
+              style={{ "--d": `${g.d}s` }}
+            />
+          ))}
+          {GUST_LEAVES.map((l, i) => (
+            <g key={`l${i}`} transform={`translate(${l.x} ${l.y})`}>
+              <path
+                className="fm-home__leaf"
+                d="M-7 0 q7 -9 14 -2 q-5 10 -14 2 z"
+                fill={i % 2 ? LEAF : LEAF_L}
+                stroke={LEAF_D}
+                strokeWidth="0.8"
+                style={{ "--d": `${l.d}s`, "--dy": `${l.dy}px` }}
+              />
+            </g>
+          ))}
+        </g>
+      )}
+
+      {pig > 0 && (
+        <g key={`pig-${pig}`} pointerEvents="none" aria-hidden="true" transform="translate(0 -96)">
+          <g className="fm-home__pigfly" style={{ "--reach": `${reach}px` }}>
+            <g className="fm-home__pigbob">
+              <g transform="scale(1.3)">
+                <FlyingPig />
+              </g>
             </g>
           </g>
+        </g>
+      )}
+
+      {bubble && (
+        <g key={bubble.id} className="fm-home__say" pointerEvents="none" aria-hidden="true">
+          <rect x={34 - bw} y="-152" width={bw} height="24" rx="8" fill="#FBF6EA" stroke={LINE} strokeWidth="1.6" />
+          <path d="M8 -128.8 L14 -118 L22 -128.8" fill="#FBF6EA" stroke={LINE} strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M9.4 -128.4 H20.6" stroke="#FBF6EA" strokeWidth="2.6" />
+          <text x={34 - bw / 2} y="-136" textAnchor="middle" fontSize="11" fontWeight="700" fill={LINE}>
+            {bubble.text}
+          </text>
+        </g>
+      )}
+    </g>
   );
 }
 
@@ -240,7 +488,7 @@ function Scene({ fields = null, crops = null, unread = null }) {
         className="fm-home__img fm-home__far"
         aria-hidden="true"
       />
-      <Windmill x={672} y={170} />
+      <Windmill x={672} y={170} crops={crops} />
 
       <path d="M0 196 Q200 172 400 198 T800 184 V450 H0 Z" fill="#86B24F" />
       <rect x="-1200" y="440" width="3200" height="1000" fill="#86B24F" />
@@ -442,7 +690,7 @@ function SceneMobile({ fields = null, crops = null, unread = null }) {
       <image href={mountainImg} x="90" y="2" width="330" height="330" className="fm-home__img fm-home__far" aria-hidden="true" />
       <image href={mountainImg} x="0" y="38" width="270" height="270" transform="translate(250 0) scale(-1 1)" className="fm-home__img fm-home__far" aria-hidden="true" />
 
-      <Windmill x={344} y={184} sc={0.95} />
+      <Windmill x={344} y={184} sc={0.95} crops={crops} />
 
       <path d="M0 198 Q100 182 200 198 T400 188 V600 H0 Z" fill="#86B24F" />
       <rect x="-1200" y="320" width="2800" height="1200" fill="#86B24F" />
