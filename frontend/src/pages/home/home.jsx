@@ -194,6 +194,71 @@ const GUST_STREAKS = [
 ];
 const MAX_SPIN = 10;
 const BASE_SPIN = 9;
+
+let _wctx = null;
+const wAudio = () => {
+  try {
+    if (sfx.isEnabled && !sfx.isEnabled()) return null;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!_wctx) _wctx = new AC();
+    if (_wctx.state === "suspended") _wctx.resume().catch(() => {});
+    return _wctx;
+  } catch (e) {
+    console.error("[windmill audio]", e);
+    return null;
+  }
+};
+const wVol = () => {
+  const v = sfx.getVolume ? sfx.getVolume() : 0.6;
+  return Math.min(1, Math.max(0.15, v));
+};
+const wTone = (c, { type = "triangle", from, to = from, start = 0, dur = 0.15, gain = 0.3 }) => {
+  const t = c.currentTime + start;
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(from, t);
+  if (to !== from) o.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
+  const peak = gain * wVol();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(c.destination);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+};
+const wPlay = (fn) => {
+  try {
+    const c = wAudio();
+    if (c) fn(c);
+  } catch (e) {
+    console.error("[windmill audio]", e);
+  }
+};
+const wSfx = {
+  whoosh: (level = 0) =>
+    wPlay((c) => {
+      const l = Math.min(10, Math.max(0, level));
+      wTone(c, { type: "triangle", from: 260 + l * 40, to: 640 + l * 80, dur: 0.2, gain: 0.5 });
+    }),
+  gust: () =>
+    wPlay((c) => {
+      wTone(c, { type: "sawtooth", from: 200, to: 700, dur: 1.2, gain: 0.25 });
+      wTone(c, { type: "sine", from: 500, to: 250, start: 0.5, dur: 1.2, gain: 0.3 });
+    }),
+  chopper: () =>
+    wPlay((c) => {
+      for (let i = 0; i < 24; i++)
+        wTone(c, { type: "square", from: 180, to: 110, start: i * 0.085, dur: 0.06, gain: 0.25 });
+    }),
+  oink: () =>
+    wPlay((c) => {
+      wTone(c, { type: "sawtooth", from: 420, to: 200, dur: 0.15, gain: 0.45 });
+      wTone(c, { type: "sawtooth", from: 380, to: 180, start: 0.2, dur: 0.17, gain: 0.45 });
+    }),
+};
+
 const reducedMotion = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
@@ -302,8 +367,8 @@ function Windmill({ x, y, sc = 1, crops = 0 }) {
     s.level = MAX_SPIN;
     setHeli(Date.now());
     setGust(Date.now());
-    sfx.gust?.();
-    sfx.chopper?.();
+    wSfx.gust();
+    wSfx.chopper();
     say("Weeeee! Taking off!", 2400);
     later(() => say("Phew... I'm back!", 2200), 5400);
     later(() => setGust(0), 4800);
@@ -320,7 +385,7 @@ function Windmill({ x, y, sc = 1, crops = 0 }) {
     if (reducedMotion()) return say("Oink! Turn on motion to see me fly.", 3000);
     s.pig = true;
     setPig(Date.now());
-    sfx.oink?.();
+    wSfx.oink();
     say("Oink! When pigs fly!", 2800);
     later(() => {
       s.pig = false;
@@ -334,7 +399,7 @@ function Windmill({ x, y, sc = 1, crops = 0 }) {
     const now = performance.now();
     s.level = Math.min(MAX_SPIN, s.level + 1);
     s.lastClick = now;
-    sfx.whoosh?.(s.level);
+    wSfx.whoosh(s.level);
     s.clicks = [...s.clicks, now].filter((t) => now - t < 8000).slice(-12);
     const c = s.clicks;
 
