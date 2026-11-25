@@ -1429,6 +1429,7 @@ function PlotGrid({
   tool,
   carry,
   picked,
+  brush,
 }) {
   const { rows, cols } = grid;
   const svgRef = useRef(null);
@@ -1468,6 +1469,18 @@ function PlotGrid({
   }, [dragging]);
   
   const [ptr, setPtr] = useState(null);
+  const [hoverCell, setHoverCell] = useState(null);
+  const planting = !!brush && !tool;
+  const moving =
+    tool === "trowel"
+      ? carry.length
+        ? carry
+        : [...plantMap.values()].filter((p) => picked.includes(p.id))
+      : [];
+  const hovering = planting || moving.length > 0;
+  useEffect(() => {
+    if (!hovering) setHoverCell(null);
+  }, [hovering]);
   const onKeyDown = (e) => {
     const map = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
     if (map[e.key]) {
@@ -1612,6 +1625,7 @@ function PlotGrid({
 
   const reserved = [];
   plantMap.forEach((plant) => {
+    if (!planting) return;
     const crop = cropByKey(plant.cropKey);
     if (!crop?.spacing) return;
     const r = (grownRadius(crop, daysBetween(plant.plantedOn, asOf), soil) / grid.size) * CELL;
@@ -1631,6 +1645,134 @@ function PlotGrid({
       />,
     );
   });
+
+  const selPlantHere = !tool && selected ? plantMap.get(`${selected.row}-${selected.col}`) : null;
+  const selPlantCrop = selPlantHere ? cropByKey(selPlantHere.cropKey) : null;
+  const selCircle =
+    selPlantCrop?.spacing > 0 ? (
+      <circle
+        key="selected-spread"
+        cx={selPlantHere.col * CELL + CELL / 2}
+        cy={selPlantHere.row * CELL + CELL / 2}
+        r={(selPlantCrop.spacing / 2 / grid.size) * CELL}
+        fill="rgba(51,67,43,0.12)"
+        stroke={PINE}
+        strokeOpacity={0.6}
+        strokeWidth={1.5}
+        strokeDasharray="5 4"
+        pointerEvents="none"
+      />
+    ) : null;
+  let moveGhost = null;
+  if (
+    moving.length &&
+    hoverCell &&
+    (carry.length > 0 || !plantMap.get(`${hoverCell.row}-${hoverCell.col}`))
+  ) {
+    const group = [...moving].sort((a, b) => a.row - b.row || a.col - b.col);
+    const rank = (values) =>
+      new Map([...new Set(values)].sort((a, b) => a - b).map((v, i) => [v, i]));
+    const rowRank = rank(group.map((p) => p.row));
+    const colRank = rank(group.map((p) => p.col));
+    const ids = new Set(group.map((p) => p.id));
+    const targets = group.map((p) => ({
+      plant: p,
+      row: hoverCell.row + rowRank.get(p.row) - rowRank.get(group[0].row),
+      col: hoverCell.col + colRank.get(p.col) - colRank.get(group[0].col),
+    }));
+    const inside = (t) => t.row >= 0 && t.col >= 0 && t.row < rows && t.col < cols;
+    const bad = targets.some((t) => {
+      if (!inside(t)) return true;
+      const other = plantMap.get(`${t.row}-${t.col}`);
+      return !!(other && !ids.has(other.id));
+    });
+    moveGhost = (
+      <g pointerEvents="none" aria-hidden="true">
+        {targets.filter(inside).map((t) => {
+          const c = cropByKey(t.plant.cropKey);
+          const cx = t.col * CELL + CELL / 2;
+          const cy = t.row * CELL + CELL / 2;
+          return (
+            <g key={`move-${t.plant.id}`}>
+              {c?.spacing > 0 && (
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={(c.spacing / 2 / grid.size) * CELL}
+                  fill={bad ? "rgba(192,57,43,0.10)" : "rgba(51,67,43,0.12)"}
+                  stroke={bad ? "#C0392B" : PINE}
+                  strokeOpacity={0.6}
+                  strokeWidth={1.5}
+                  strokeDasharray="5 4"
+                />
+              )}
+              <rect
+                x={t.col * CELL + 1}
+                y={t.row * CELL + 1}
+                width={CELL - 2}
+                height={CELL - 2}
+                rx={5}
+                fill={bad ? "#C0392B" : STAGES[getStage(t.plant, c, asOf, soil)].color}
+                fillOpacity={0.55}
+                stroke={bad ? "#C0392B" : PINE}
+                strokeOpacity={0.7}
+                strokeWidth={2}
+                strokeDasharray="4 3"
+              />
+              {!bad && (
+                <text x={cx} y={cy + 6} textAnchor="middle" fontSize="18" opacity={0.5}>
+                  {c.emoji}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </g>
+    );
+  }
+  const brushCrop = planting ? cropByKey(brush) : null;
+  const hoverTaken = !!(hoverCell && plantMap.get(`${hoverCell.row}-${hoverCell.col}`));
+  const ghost =
+    brushCrop && hoverCell ? (
+      <g pointerEvents="none" aria-hidden="true">
+        {brushCrop.spacing > 0 && (
+          <circle
+            cx={hoverCell.col * CELL + CELL / 2}
+            cy={hoverCell.row * CELL + CELL / 2}
+            r={(brushCrop.spacing / 2 / grid.size) * CELL}
+            fill="rgba(51,67,43,0.12)"
+            stroke={PINE}
+            strokeOpacity={0.6}
+            strokeWidth={1.5}
+            strokeDasharray="5 4"
+          />
+        )}
+        <rect
+          x={hoverCell.col * CELL + 1}
+          y={hoverCell.row * CELL + 1}
+          width={CELL - 2}
+          height={CELL - 2}
+          rx={5}
+          fill={hoverTaken ? "#C0392B" : STAGES.sprout.color}
+          fillOpacity={0.55}
+          stroke={hoverTaken ? "#C0392B" : PINE}
+          strokeOpacity={0.7}
+          strokeWidth={2}
+          strokeDasharray="4 3"
+        />
+        {!hoverTaken && (
+          <text
+            x={hoverCell.col * CELL + CELL / 2}
+            y={hoverCell.row * CELL + CELL / 2 + 6}
+            textAnchor="middle"
+            fontSize="18"
+            opacity={0.5}
+          >
+            {brushCrop.emoji}
+          </text>
+        )}
+      </g>
+    ) : null;
 
   return (
     <div
@@ -1655,6 +1797,12 @@ function PlotGrid({
           userSelect: "none",
         }}
         onDragStart={(e) => e.preventDefault()}
+        onPointerMove={(e) => {
+          if (!hovering || e.pointerType === "touch") return;
+          const c = cellAt(e);
+          setHoverCell((h) => (h && h.row === c.row && h.col === c.col ? h : c));
+        }}
+        onPointerLeave={() => setHoverCell(null)}
         tabIndex={0}
         role="group"
         aria-label={`Planting grid, ${rows} rows by ${cols} columns. Arrow keys move, Enter plants or selects.`}
@@ -1662,6 +1810,9 @@ function PlotGrid({
       >
         {cells}
         {reserved}
+        {selCircle}
+        {ghost}
+        {moveGhost}
         {box && box.start && (
           <rect
             x={Math.min(box.start.col, box.end.col) * CELL}
@@ -2963,6 +3114,7 @@ export default function FarMeDashboard() {
                     tool={tool}
                     carry={carryPlants}
                     picked={picked}
+                    brush={brush}
                   />
                 </div>
                 <div className={`fm-panel p-4`} style={{ flex: "1 1 220px" }} aria-live="polite">
