@@ -59,6 +59,21 @@ function AppRoutes({ path, onAuth }) {
       confirmedRef.current = false; 
       rememberSignedIn(false);
       onAuth(false);
+
+      if (path.startsWith("/login") || path.startsWith("/register")) {
+        let stillHere = true;
+        getUser()
+          .then(() => {
+            if (stillHere) window.location.replace("/home");
+          })
+          .catch(() => {
+            return;
+          });
+        return () => {
+          stillHere = false;
+        };
+      }
+
       return;
     }
 
@@ -112,12 +127,20 @@ function AppRoutes({ path, onAuth }) {
   if (path.startsWith("/home")) return <FarMeHome />;
   if (path.startsWith("/library")) return <FarMeLibrary />;
   if (path.startsWith("/settings")) return <Settings />;
+  if (path.startsWith("/dashboard")) return <FarMeDashboard />;
 
-  return <FarMeDashboard />;
+  return <FarMeHome />;
 }
 
 export default function App() {
-  const [path, setPath] = useState(window.location.pathname);
+  const [path, setPath] = useState(() => {
+    const { pathname, search, hash } = window.location;
+    if (pathname === "/" || pathname === "") {
+      window.history.replaceState({}, "", "/home" + search + hash);
+      return "/home";
+    }
+    return pathname;
+  });
   const [signedIn, setSignedIn] = useState(false); 
   const onPublicPage = PUBLIC_PAGES.some((page) => path.startsWith(page));
 
@@ -141,11 +164,17 @@ export default function App() {
       window.scrollTo(0, 0);
     };
 
+    const handleAuthEvent = (e) => {
+      if (e.key === "fm-auth-event") window.location.reload();
+    };
+
     window.addEventListener("popstate", handleNavigation);
+    window.addEventListener("storage", handleAuthEvent);
     document.addEventListener("click", handleLinkClick);
 
     return () => {
       window.removeEventListener("popstate", handleNavigation);
+      window.removeEventListener("storage", handleAuthEvent);
       document.removeEventListener("click", handleLinkClick);
     };
   }, []);

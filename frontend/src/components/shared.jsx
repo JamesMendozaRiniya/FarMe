@@ -638,6 +638,9 @@ export function Sidebar({ active = "home", user, onHome }) {
 }
 
 
+const POS_VERSION = 2;
+const DEFAULT_POS = { right: 16, bottom: 80 };
+
 const clampPos = (p) => ({
   right: Math.min(Math.max(8, p.right), window.innerWidth - BUBBLE - 8),
   bottom: Math.min(Math.max(8, p.bottom), window.innerHeight - BUBBLE - 8),
@@ -664,7 +667,9 @@ export function ChatHead({ context, suggestions, hint }) {
   saved.conversationId || null
   );
   const [askClear, setAskClear] = useState(false);
-  const [pos, setPos] = useState(saved.pos || { right: 16, bottom: 16 }); 
+  const [pos, setPos] = useState(
+    saved.posVersion === POS_VERSION && saved.pos ? saved.pos : DEFAULT_POS,
+  );
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const drag = useRef(null); 
@@ -678,6 +683,7 @@ export function ChatHead({ context, suggestions, hint }) {
         JSON.stringify({
           open,
           pos,
+          posVersion: POS_VERSION,
           messages: messages.slice(-50),
           conversationId,
         })

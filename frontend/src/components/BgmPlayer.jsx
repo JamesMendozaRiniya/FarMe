@@ -44,11 +44,15 @@ export default function BgmPlayer({ showButton = true, enabled = true }) {
       armed = true;
       window.addEventListener("click", onGesture);
       window.addEventListener("keydown", onGesture);
+      window.addEventListener("pointerdown", onGesture);
+      window.addEventListener("touchend", onGesture);
     };
     const disarm = () => {
       armed = false;
       window.removeEventListener("click", onGesture);
       window.removeEventListener("keydown", onGesture);
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("touchend", onGesture);
     };
 
     const create = () => {
