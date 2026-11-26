@@ -1,8 +1,12 @@
 const KEY_ON = "fm-sfx-on";
 const KEY_VOL = "fm-sfx-volume";
+const DEFAULT_VOLUME = 0.6;
 
 let ctx = null;
 let master = null;
+let noiseBuffer = null;
+
+const active = new Set();
 
 const read = (key, fallback) => {
   try {
@@ -13,12 +17,13 @@ const read = (key, fallback) => {
   }
 };
 
+const clamp01 = (n) => Math.min(1, Math.max(0, n));
+
 let enabled = read(KEY_ON, "1") !== "0";
 
-const savedVolume = Number(read(KEY_VOL, "0.6"));
-let volume = Number.isFinite(savedVolume)
-  ? Math.min(1, Math.max(0, savedVolume))
-  : 0.6;
+const rawVolume = read(KEY_VOL, "");
+const savedVolume = rawVolume.trim() === "" ? NaN : Number(rawVolume);
+let volume = Number.isFinite(savedVolume) ? clamp01(savedVolume) : DEFAULT_VOLUME;
 
 function audio() {
   if (!enabled) return null;
@@ -40,6 +45,21 @@ function audio() {
   return ctx;
 }
 
+function getNoiseBuffer(c) {
+  if (!noiseBuffer || noiseBuffer.sampleRate !== c.sampleRate) {
+    const length = Math.floor(c.sampleRate * 2);
+    noiseBuffer = c.createBuffer(1, length, c.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuffer;
+}
+
+function track(source) {
+  active.add(source);
+  source.onended = () => active.delete(source);
+}
+
 function tone(c, {
   type = "sine",
   from,
@@ -56,17 +76,15 @@ function tone(c, {
   osc.frequency.setValueAtTime(from, t);
 
   if (to !== from) {
-    osc.frequency.exponentialRampToValueAtTime(
-      Math.max(1, to),
-      t + dur
-    );
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
   }
 
   envelope.gain.setValueAtTime(0.0001, t);
-  envelope.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+  envelope.gain.exponentialRampToValueAtTime(gain, t + Math.min(0.01, dur / 3));
   envelope.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
   osc.connect(envelope).connect(master);
+  track(osc);
   osc.start(t);
   osc.stop(t + dur + 0.02);
 }
@@ -81,14 +99,7 @@ function noise(c, {
   gain = 0.2,
 }) {
   const t = c.currentTime + start;
-  const length = Math.max(1, Math.floor(c.sampleRate * dur));
-
-  const buffer = c.createBuffer(1, length, c.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  for (let i = 0; i < length; i++) {
-    data[i] = Math.random() * 2 - 1;
-  }
+  const buffer = getNoiseBuffer(c);
 
   const source = c.createBufferSource();
   source.buffer = buffer;
@@ -99,22 +110,19 @@ function noise(c, {
   filter.frequency.setValueAtTime(from, t);
 
   if (to !== from) {
-    filter.frequency.exponentialRampToValueAtTime(
-      Math.max(1, to),
-      t + dur
-    );
+    filter.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
   }
 
   const envelope = c.createGain();
   envelope.gain.setValueAtTime(0.0001, t);
-  envelope.gain.exponentialRampToValueAtTime(
-    gain,
-    t + Math.min(0.025, dur / 3)
-  );
+  envelope.gain.exponentialRampToValueAtTime(gain, t + Math.min(0.025, dur / 3));
   envelope.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
   source.connect(filter).connect(envelope).connect(master);
-  source.start(t);
+  track(source);
+
+  const offset = Math.random() * Math.max(0, buffer.duration - dur - 0.05);
+  source.start(t, offset);
   source.stop(t + dur + 0.02);
 }
 
@@ -138,14 +146,17 @@ function leafRustle(c, start = 0) {
   });
 }
 
-const play = (fn) => () => {
+const play = (fn) => (...args) => {
   try {
     const c = audio();
-    if (c) fn(c);
-  } catch {}
+    if (c) fn(c, ...args);
+  } catch (err) {
+    if (import.meta.env?.DEV) console.warn("[sfx]", err);
+  }
 };
 
 export const sfx = {
+
   plant: play((c) => {
     noise(c, {
       dur: 0.17,
@@ -326,47 +337,53 @@ export const sfx = {
     });
   }),
 
-  /* UNUSED: windmill sounds. The windmill on the home page now uses its own
-     wSfx sounds inside home.jsx, so these are kept only for reference.
-
-  whoosh(level = 0) {
-    try {
-      const c = audio();
-      if (!c) return;
-      const l = Math.min(10, Math.max(0, level));
-      noise(c, {
-        dur: 0.32,
-        from: 420 + l * 90,
-        to: 1300 + l * 160,
-        type: "bandpass",
-        q: 0.7,
-        gain: 0.45 + l * 0.03,
-      });
-    } catch {}
-  },
+  whoosh: play((c, level = 0) => {
+    const l = Math.min(10, Math.max(0, Number(level) || 0));
+    tone(c, {
+      type: "triangle",
+      from: 260 + l * 40,
+      to: 640 + l * 80,
+      dur: 0.2,
+      gain: 0.5,
+    });
+  }),
 
   gust: play((c) => {
-    noise(c, { dur: 1.8, from: 300, to: 1800, type: "bandpass", q: 0.5, gain: 0.6 });
-    noise(c, { start: 0.4, dur: 1.6, from: 1800, to: 400, type: "bandpass", q: 0.5, gain: 0.4 });
+    tone(c, { type: "sawtooth", from: 200, to: 700, dur: 1.2, gain: 0.25 });
+    tone(c, { type: "sine", from: 500, to: 250, start: 0.5, dur: 1.2, gain: 0.3 });
   }),
 
   chopper: play((c) => {
     for (let i = 0; i < 24; i++) {
-      noise(c, { start: i * 0.085, dur: 0.06, from: 260, to: 140, type: "lowpass", gain: 0.5 });
+      tone(c, {
+        type: "square",
+        from: 180,
+        to: 110,
+        start: i * 0.085,
+        dur: 0.06,
+        gain: 0.25,
+      });
     }
   }),
 
   oink: play((c) => {
-    tone(c, { type: "sawtooth", from: 330, to: 170, dur: 0.14, gain: 0.35 });
-    tone(c, { type: "sawtooth", from: 300, to: 150, start: 0.19, dur: 0.16, gain: 0.35 });
-    noise(c, { dur: 0.14, from: 900, to: 400, type: "bandpass", gain: 0.2 });
+    tone(c, { type: "sawtooth", from: 420, to: 200, dur: 0.15, gain: 0.45 });
+    tone(c, { type: "sawtooth", from: 380, to: 180, start: 0.2, dur: 0.17, gain: 0.45 });
   }),
-  */
 
   isEnabled: () => enabled,
 
   setEnabled(on) {
     enabled = !!on;
+
+    if (!enabled) {
+      active.forEach((source) => {
+        try {
+          source.stop();
+        } catch {}
+      });
+      active.clear();
+    }
 
     try {
       localStorage.setItem(KEY_ON, enabled ? "1" : "0");
@@ -376,10 +393,10 @@ export const sfx = {
   getVolume: () => volume,
 
   setVolume(v) {
-    volume = Math.min(1, Math.max(0, Number(v) || 0));
+    volume = clamp01(Number(v) || 0);
 
-    if (master) {
-      master.gain.value = volume;
+    if (master && ctx) {
+      master.gain.setTargetAtTime(volume, ctx.currentTime, 0.02);
     }
 
     try {
