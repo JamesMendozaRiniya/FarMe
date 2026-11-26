@@ -107,6 +107,7 @@ class LoginRequest(BaseModel):
 
     login: str = Field(alias="identifier", min_length=1, max_length=255)
     password: str = Field(min_length=1, max_length=128)
+    remember: bool = False
 
     @field_validator("login")
     @classmethod

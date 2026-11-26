@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
@@ -69,17 +71,28 @@ def login(
             detail="Incorrect username/email or password."
         )
 
-    token = create_access_token(user.id)
+    cookie_options = {
+        "key": COOKIE_NAME,
+        "httponly": True,
+        "secure": settings.COOKIE_SECURE,
+        "samesite": settings.COOKIE_SAMESITE,
+        "path": "/"
+    }
 
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite="none",
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        path="/"
-    )
+    if data.remember:
+        lifetime = timedelta(days=settings.REMEMBER_ME_EXPIRE_DAYS)
+        token = create_access_token(user.id, lifetime)
+        response.set_cookie(
+            value=token,
+            max_age=int(lifetime.total_seconds()),
+            **cookie_options
+        )
+    else:
+        token = create_access_token(user.id)
+        response.set_cookie(
+            value=token,
+            **cookie_options
+        )
 
     return user
 
@@ -100,7 +113,7 @@ def logout(response: Response):
         key=COOKIE_NAME,
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="none",
+        samesite=settings.COOKIE_SAMESITE,
         path="/"
     )
 

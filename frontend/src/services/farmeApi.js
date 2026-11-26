@@ -186,12 +186,21 @@ export async function register(payload) {
   });
 }
 
+export function notifyAuthChange() {
+  try {
+    localStorage.setItem("fm-auth-event", String(Date.now()));
+  } catch {
+    return;
+  }
+}
+
 export async function login(payload) {
   return apiRequest("/auth/login", {
     method: "POST",
     body: JSON.stringify({
       identifier: payload.identifier,
       password: payload.password,
+      remember: !!payload.remember,
     }),
   });
 }
@@ -305,6 +314,7 @@ export async function logout() {
   } finally {
     localStorage.removeItem("farme.chat.v1");
     localStorage.removeItem("fm-user");
+    notifyAuthChange();
     window.location.assign("/login");
   }
 }

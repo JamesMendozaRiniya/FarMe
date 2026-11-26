@@ -10,7 +10,7 @@ import { Eye, EyeOff } from "lucide-react";
 import "./login.css";
 import logo from "../../assets/sidebar-logo.png";
 import Sprout from "../../components/sprout";
-import { login } from "../../services/farmeApi"; // the call to the server (todo(backend) notes are there)
+import { login, notifyAuthChange } from "../../services/farmeApi"; // the call to the server (todo(backend) notes are there)
 import PageFade from "../../components/page-fade"; // fades between the register / login / forgot / reset pages
 
 const AFTER_LOGIN_HREF = "/home";
@@ -83,6 +83,7 @@ export default function Login() {
         password: values.password, // never trimmed: spaces can be part of a password
         remember: values.remember,
       });
+      notifyAuthChange();
       window.location.assign(AFTER_LOGIN_HREF);
     } catch (err) {
       setStatus("idle");
