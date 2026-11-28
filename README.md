@@ -30,7 +30,7 @@
 
 <br>
 
-**[🌱 Live Demo](https://farme-simulation.netlify.app)** &nbsp;·&nbsp; [About](#-about-farme) &nbsp;·&nbsp; [Features](#-features) &nbsp;·&nbsp; [Meet Sprout](#-meet-sprout) &nbsp;·&nbsp; [Screenshots](#-a-peek-at-the-farm) &nbsp;·&nbsp; [Run it](#-run-it-locally) &nbsp;·&nbsp; [Team](#-the-farmers)
+**[🌱 Live Demo](https://farme-simulation.netlify.app)** &nbsp;·&nbsp; [About](#-about-farme) &nbsp;·&nbsp; [Features](#-features) &nbsp;·&nbsp; [Meet Sprout](#-meet-sprout) &nbsp;·&nbsp; [Screenshots](#-a-peek-at-the-farm) &nbsp;·&nbsp; [Run it](#-run-it-locally) &nbsp;·&nbsp; [Team](#the-farmers)
 
 </div>
 
@@ -38,7 +38,7 @@
 
 # 🌾 About FarMe
 
-> *Farm + Me.* A farm for me.
+> *Farm + Me.* A farm that is yours, one square at a time.
 
 **FarMe** is a web-based **farming simulation and management platform** for aspiring gardeners, hobby growers, and anyone curious about agriculture. Create your own fields, pick crops that actually suit your soil, location and season, then water, journal, and harvest your way through a cozy, farm-inspired world.
 
@@ -390,6 +390,7 @@ The backend exchanges the refresh token for short-lived access tokens automatica
 
 <img src="docs/divider.svg" width="100%" alt="">
 
+<a id="the-farmers"></a>
 # 🧑‍🌾 The Farmers
 
 From first sketch to first harvest, meet the people behind FarMe.
