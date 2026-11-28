@@ -822,7 +822,12 @@ export function ChatHead({ context, suggestions, hint }) {
   return (
     <>
       {open && (
-        <section className="fm-chat-panel" role="dialog" aria-label="FarMe chat" style={panelStyle}>
+        <section
+          className={`fm-chat-panel${expanded ? " fm-chat-panel--expanded" : ""}`}
+          role="dialog"
+          aria-label="FarMe chat"
+          style={panelStyle}
+        >
           <header className="fm-chat-head">
             <strong className="font-display text-lg">Sprout</strong>
             <span className="flex gap-2">

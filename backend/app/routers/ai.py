@@ -78,7 +78,8 @@ async def chat(
         response = await generate_ai_response(
             user_message=request.message,
             history=history,
-            context=request.context
+            context=request.context,
+            username=current_user.username
         )
 
         db.add_all([

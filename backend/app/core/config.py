@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 class Settings(BaseSettings):
     DATABASE_URL: str
     SECRET_KEY: str
@@ -9,10 +8,10 @@ class Settings(BaseSettings):
     REMEMBER_ME_EXPIRE_DAYS: int = 30
     COOKIE_SECURE: bool = False
 
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_EMAIL: str = ""
-    SMTP_PASSWORD: str = ""
+    GMAIL_CLIENT_ID: str = ""
+    GMAIL_CLIENT_SECRET: str = ""
+    GMAIL_REFRESH_TOKEN: str = ""
+    GMAIL_SENDER: str = ""
 
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.5-flash-lite"
@@ -23,7 +22,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        env_file_encoding="utf-8"
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
 
