@@ -34,7 +34,11 @@ export const slotNeedsWater = (slot, now) =>
   (slot?.plants || []).some((p) => plantNeedsWater(p, now));
 
 export function daysOverdue(plant, now) {
-  if (!plant?.lastWatered) return 0;
+  if (!plant?.lastWatered) {
+    if (!plant?.plantedOn) return 0;
+    const planted = Math.round(new Date(`${plant.plantedOn}T00:00:00`).getTime() / DAY_MS);
+    return Math.max(0, dayNumber(now) - planted);
+  }
   return Math.max(0, -daysUntilWatering(plant, now));
 }
 

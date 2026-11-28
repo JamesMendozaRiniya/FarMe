@@ -3234,7 +3234,9 @@ export default function FarMeDashboard() {
                       <p className="font-bold flex items-center gap-1">
                         <Droplets size={14} aria-hidden="true" />
                         {!selPlant.lastWatered
-                          ? "Not watered yet \u2013 needs water"
+                          ? plantOverdue(selPlant, now)
+                            ? `Not watered yet \u2013 overdue by ${daysOverdue(selPlant, now)} day${daysOverdue(selPlant, now) === 1 ? "" : "s"}`
+                            : "Not watered yet \u2013 needs water"
                           : plantOverdue(selPlant, now)
                             ? `Overdue by ${daysOverdue(selPlant, now)} day${daysOverdue(selPlant, now) === 1 ? "" : "s"} (last: ${new Date(selPlant.lastWatered).toLocaleDateString([], { month: "short", day: "numeric" })})`
                             : plantNeedsWater(selPlant, now)
