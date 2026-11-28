@@ -643,18 +643,26 @@
 }
 
 @media (max-width: 767px) {
+  :root {
+    --fm-chat-bottom-gap: 64px;
+  }
   .fm-chat-panel {
-    top: 0 !important;
+    top: auto !important;
     right: 0 !important;
-    bottom: 0 !important;
+    bottom: calc(var(--fm-chat-bottom-gap) + env(safe-area-inset-bottom, 0px)) !important;
     left: 0 !important;
     width: auto;
-    height: auto !important;
+    height: min(65dvh, 520px) !important;
     max-height: none !important;
-    border: 0;
-    border-radius: 0;
+    border-width: 3px 0 3px;
+    border-radius: 1rem 1rem 0 0;
     box-shadow: none;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .fm-chat-panel--expanded {
+    top: 0 !important;
+    height: auto !important;
+    border-top-width: 0;
+    border-radius: 0;
   }
 }
 
