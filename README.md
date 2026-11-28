@@ -30,11 +30,7 @@
 
 <br>
 
-<<<<<<< HEAD
 **[🌱 Live Demo](https://farme-simulation.netlify.app)** &nbsp;·&nbsp; [About](#-about-farme) &nbsp;·&nbsp; [Features](#-features) &nbsp;·&nbsp; [Meet Sprout](#-meet-sprout) &nbsp;·&nbsp; [Screenshots](#-a-peek-at-the-farm) &nbsp;·&nbsp; [Run it](#-run-it-locally) &nbsp;·&nbsp; [Team](#the-farmers)
-=======
-**[🌱 Live Demo](https://farme-simulation.netlify.app)** &nbsp;·&nbsp; [About](#-about-farme) &nbsp;·&nbsp; [Features](#-features) &nbsp;·&nbsp; [Meet Sprout](#-meet-sprout) &nbsp;·&nbsp; [Screenshots](#-a-peek-at-the-farm) &nbsp;·&nbsp; [Run it](#-run-it-locally) &nbsp;·&nbsp; [Team](#-the-farmers)
->>>>>>> origin/main
 
 </div>
 
@@ -394,10 +390,7 @@ The backend exchanges the refresh token for short-lived access tokens automatica
 
 <img src="docs/divider.svg" width="100%" alt="">
 
-<<<<<<< HEAD
 <a id="the-farmers"></a>
-=======
->>>>>>> origin/main
 # 🧑‍🌾 The Farmers
 
 From first sketch to first harvest, meet the people behind FarMe.
