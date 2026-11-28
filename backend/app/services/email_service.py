@@ -1,40 +1,67 @@
+import html
+import logging
 
-import smtplib
-from email.message import EmailMessage
+import requests
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 
-def send_password_reset_email(recipient: str, reset_link: str):
-    message = EmailMessage()
-    message["Subject"] = "FarMe Password Reset"
-    message["From"] = settings.SMTP_EMAIL
-    message["To"] = recipient
+# Resend is called over HTTPS (port 443), so it works on hosts that block
+# SMTP ports (25, 465, 587), such as Render's free web services.
+RESEND_URL = "https://api.resend.com/emails"
+RESEND_TIMEOUT_SECONDS = 10
 
-    message.set_content(
-        f"""
-        We received a request to reset your FarMe password.
 
-        Click the link below to create a new password:
+def _send_email(recipient: str, subject: str, text: str, html_body: str) -> dict:
+    if not settings.RESEND_API_KEY:
+        raise ValueError("RESEND_API_KEY is not configured.")
 
-        {reset_link}
-
-        If you did not request this, you can ignore this email.
-        """
+    response = requests.post(
+        RESEND_URL,
+        headers={
+            "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "farme-backend/1.0",
+        },
+        json={
+            "from": settings.EMAIL_FROM,
+            "to": [recipient],
+            "subject": subject,
+            "text": text,
+            "html": html_body,
+        },
+        timeout=RESEND_TIMEOUT_SECONDS,
     )
 
-    message.add_alternative(
-        f"""
+    if not response.ok:
+        # Resend explains the problem in the body (for example an unverified
+        # domain), so keep it in the error that gets logged.
+        raise RuntimeError(
+            f"Resend rejected the email ({response.status_code}): {response.text}"
+        )
+
+    return response.json()
+
+
+def send_password_reset_email(recipient: str, reset_link: str):
+    safe_link = html.escape(reset_link, quote=True)
+
+    text = (
+        "We received a request to reset your FarMe password.\n\n"
+        "Open the link below to create a new password:\n\n"
+        f"{reset_link}\n\n"
+        "This link expires in 15 minutes.\n"
+        "If you did not request this, you can ignore this email."
+    )
+
+    html_body = f"""
         <h2>Password Reset Request</h2>
         <p>We received a request to reset your FarMe password.</p>
         <p>Click the link below to create a new password:</p>
-        <a href="{reset_link}">Reset My Password</a>
+        <p><a href="{safe_link}">Reset My Password</a></p>
+        <p>This link expires in 15 minutes.</p>
         <p>If you did not request this, you can ignore this email.</p>
-        """,
-        subtype="html"
-    )
+    """
 
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-        server.starttls()
-        server.login(settings.SMTP_EMAIL, settings.SMTP_PASSWORD)
-        return server.send_message(message)
+    return _send_email(recipient, "FarMe Password Reset", text, html_body)
