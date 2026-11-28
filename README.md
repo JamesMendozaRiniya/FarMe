@@ -38,7 +38,7 @@
 
 # 🌾 About FarMe
 
-> *Farm + Me.* A farm that is yours, one square at a time.
+> *Farm + Me.* A farm for me.
 
 **FarMe** is a web-based **farming simulation and management platform** for aspiring gardeners, hobby growers, and anyone curious about agriculture. Create your own fields, pick crops that actually suit your soil, location and season, then water, journal, and harvest your way through a cozy, farm-inspired world.
 
