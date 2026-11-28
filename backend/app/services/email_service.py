@@ -1,5 +1,10 @@
+import base64
 import html
 import logging
+import threading
+import time
+from email.message import EmailMessage
+from email.utils import formataddr
 
 import requests
 
@@ -7,38 +12,84 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Resend is called over HTTPS (port 443), so it works on hosts that block
-# SMTP ports (25, 465, 587), such as Render's free web services.
-RESEND_URL = "https://api.resend.com/emails"
-RESEND_TIMEOUT_SECONDS = 10
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+TIMEOUT_SECONDS = 10
+
+_token = {"value": None, "expires_at": 0.0}
+_token_lock = threading.Lock()
+
+
+def _access_token(force_refresh: bool = False) -> str:
+    with _token_lock:
+        if (
+            not force_refresh
+            and _token["value"]
+            and time.time() < _token["expires_at"] - 60
+        ):
+            return _token["value"]
+
+        missing = [
+            name
+            for name in (
+                "GMAIL_CLIENT_ID",
+                "GMAIL_CLIENT_SECRET",
+                "GMAIL_REFRESH_TOKEN",
+                "GMAIL_SENDER",
+            )
+            if not getattr(settings, name)
+        ]
+        if missing:
+            raise ValueError(f"Email is not configured. Missing: {', '.join(missing)}")
+
+        response = requests.post(
+            TOKEN_URL,
+            data={
+                "client_id": settings.GMAIL_CLIENT_ID,
+                "client_secret": settings.GMAIL_CLIENT_SECRET,
+                "refresh_token": settings.GMAIL_REFRESH_TOKEN,
+                "grant_type": "refresh_token",
+            },
+            timeout=TIMEOUT_SECONDS,
+        )
+
+        if not response.ok:
+            raise RuntimeError(
+                f"Google refused the sign-in ({response.status_code}): {response.text}"
+            )
+
+        data = response.json()
+        _token["value"] = data["access_token"]
+        _token["expires_at"] = time.time() + int(data.get("expires_in", 3600))
+        return _token["value"]
 
 
 def _send_email(recipient: str, subject: str, text: str, html_body: str) -> dict:
-    if not settings.RESEND_API_KEY:
-        raise ValueError("RESEND_API_KEY is not configured.")
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr(("FarMe", settings.GMAIL_SENDER))
+    message["To"] = recipient
+    message.set_content(text)
+    message.add_alternative(html_body, subtype="html")
 
-    response = requests.post(
-        RESEND_URL,
-        headers={
-            "Authorization": f"Bearer {settings.RESEND_API_KEY}",
-            "Content-Type": "application/json",
-            "User-Agent": "farme-backend/1.0",
-        },
-        json={
-            "from": settings.EMAIL_FROM,
-            "to": [recipient],
-            "subject": subject,
-            "text": text,
-            "html": html_body,
-        },
-        timeout=RESEND_TIMEOUT_SECONDS,
-    )
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    for attempt in range(2):
+        response = requests.post(
+            SEND_URL,
+            headers={"Authorization": f"Bearer {_access_token(force_refresh=attempt > 0)}"},
+            json={"raw": raw},
+            timeout=TIMEOUT_SECONDS,
+        )
+
+        if response.status_code == 401 and attempt == 0:
+            continue
+
+        break
 
     if not response.ok:
-        # Resend explains the problem in the body (for example an unverified
-        # domain), so keep it in the error that gets logged.
         raise RuntimeError(
-            f"Resend rejected the email ({response.status_code}): {response.text}"
+            f"Gmail rejected the email ({response.status_code}): {response.text}"
         )
 
     return response.json()
